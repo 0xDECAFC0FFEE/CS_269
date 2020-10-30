@@ -1,28 +1,54 @@
+from . import lth
 import torch
 import torch.nn as nn
 import torch.nn.init as init
 
+class LeNet_mnist(nn.Module):
+    def __init__(self):
+        super(LeNet_mnist, self).__init__()
+        self.layer1 = nn.Linear(784, 300)
+        init.xavier_normal_(self.layer1.weight.data)
+        init.normal_(self.layer1.bias.data)
+        self.relu1 = nn.ReLU(inplace=True)
 
-class LeNet(nn.Module):
-    def __init__(self, num_classes=10):
-        super(LeNet, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=(3, 3), stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-        )
-        self.classifier = nn.Sequential(
-            nn.Linear(64*14*14, 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 256),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, num_classes),
-        )
+        self.layer2 = nn.Linear(300, 100)
+        init.xavier_normal_(self.layer2.weight.data)
+        init.normal_(self.layer2.bias.data)
+        self.relu2 = nn.ReLU(inplace=True)
+
+        self.layer3 = nn.Linear(100, 10)
+        init.xavier_normal_(self.layer3.weight.data)
+        init.normal_(self.layer3.bias.data)
+        self.mask = lth.build_mask(self)
 
     def forward(self, x):
-        x = self.features(x)
         x = torch.flatten(x, 1)
-        x = self.classifier(x)
-        return x
+        l1_out = self.relu1(self.layer1(x))
+        l2_out = self.relu2(self.layer2(l1_out))
+        logit = self.layer3(l2_out)
+        return logit
+
+class LeNet_cifar10(nn.Module):
+    def __init__(self):
+        super(LeNet_cifar10, self).__init__()
+        self.layer1 = nn.Linear(3072, 300)
+        init.xavier_normal_(self.layer1.weight.data)
+        init.normal_(self.layer1.bias.data)
+        self.relu1 = nn.ReLU(inplace=True)
+
+        self.layer2 = nn.Linear(300, 100)
+        init.xavier_normal_(self.layer2.weight.data)
+        init.normal_(self.layer2.bias.data)
+        self.relu2 = nn.ReLU(inplace=True)
+
+        self.layer3 = nn.Linear(100, 10)
+        init.xavier_normal_(self.layer3.weight.data)
+        init.normal_(self.layer3.bias.data)
+        self.mask = lth.build_mask(self)
+
+    def forward(self, x):
+        x = torch.flatten(x, 1)
+        l1_out = self.relu1(self.layer1(x))
+        l2_out = self.relu2(self.layer2(l1_out))
+        logit = self.layer3(l2_out)
+        return logit

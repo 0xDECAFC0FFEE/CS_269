@@ -5,8 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.init as init
-import torch.nn.functional as F
-from tqdm.notebook import tqdm
+import random
+import datetime
 
 class TopModelSaver():
     def __init__(self, location, config):
@@ -80,6 +80,20 @@ def flatten(iterable, max_depth=np.inf):
     assert(max_depth >= 0)
     return recursive_step(iterable, max_depth)
 
+
+def new_expr_id(prepend=""):
+    """
+    returns new experiemnt id for process.
+    """
+    chars = "abcdefghijklmnopqrstuvwxyz"
+    nums = "1234567890"
+
+    nonce = random.choices(chars+chars.upper()+nums, k=5)
+    nonce = "".join(nonce)
+    time = datetime.datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
+
+    return f"expr {time} {prepend} {nonce}"
+
 def weight_init(m):
     '''
     Usage:
@@ -146,43 +160,3 @@ def weight_init(m):
                 init.orthogonal_(param.data)
             else:
                 init.normal_(param.data)
-
-
-def train_epoch(model, train_loader, optimizer, loss_func):
-    EPS = 1e-6
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.train() # setting model to train mode
-    for batch_idx, (imgs, targets) in tqdm(enumerate(train_loader), leave=False):
-        optimizer.zero_grad() # zeroing out the gradients
-        imgs, targets = imgs.to(device), targets.to(device) # sending Xs and ys to gpu
-        output = model(imgs) # pred ys
-        train_loss = loss_func(output, targets) # getting loss
-        train_loss.backward() # backpropagating the loss
-
-        # # Freezing Pruned weights by making their gradients Zero
-        # for name, p in model.named_parameters():
-        #     if 'weight' in name:
-        #         tensor = p.data.cpu().numpy()
-        #         grad_tensor = p.grad.data.cpu().numpy()
-        #         grad_tensor = np.where(tensor < EPS, 0, grad_tensor)
-        #         p.grad.data = torch.from_numpy(grad_tensor).to(device)
-        optimizer.step() # incrementing step in optimizer
-    return train_loss.item()
-
-# Function for Testing
-def test_epoch(model, test_loader, loss_func):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.eval() # test mode
-    test_loss = 0
-    correct = 0
-    with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-            pred = output.data.max(1, keepdim=True)[1]  # get the index of the max log-probability
-            correct += pred.eq(target.data.view_as(pred)).sum().item()
-        test_loss /= len(test_loader.dataset)
-        accuracy = 100. * correct / len(test_loader.dataset)
-    print(f"test accuracy {accuracy}")
-    return accuracy
