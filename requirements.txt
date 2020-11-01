@@ -131,7 +131,6 @@ pyasn1=0.4.8=py_0
 pyasn1-modules=0.2.7=py_0
 pycosat=0.6.3=py37h7b6447c_0
 pycparser=2.20=py_0
-pycrypto=2.6.1=py37h7b6447c_10
 pygments=2.6.1=py_0
 pyjwt=1.7.1=py_0
 pyopenssl=19.1.0=py37_0
@@ -143,7 +142,6 @@ python=3.7.7=hcff3b4d_5
 python-dateutil=2.8.1=py_0
 python-libarchive-c=2.9=py_0
 python_abi=3.7=1_cp37m
-pytorch=1.6.0=py3.7_cuda10.1.243_cudnn7.6.3_0
 pytz=2020.1=py_0
 pyyaml=5.3.1=py37h7b6447c_0
 pyzmq=19.0.2=py37he6710b0_1
@@ -165,7 +163,6 @@ tensorboard-plugin-wit=1.7.0=pyh9f0ad1d_0
 terminado=0.9.1=py37_0
 testpath=0.4.4=py_0
 tk=8.6.10=hbc83047_0
-torchvision=0.7.0=py37_cu101
 tornado=6.0.4=py37h7b6447c_1
 tqdm=4.46.0=py_0
 traitlets=4.3.3=py37_0
