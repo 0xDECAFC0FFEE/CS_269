@@ -9,20 +9,25 @@ def run(model, dataset, lottery_ticket_params):
     """
     executes a lottery ticket hypothesis run (repeatedly trains, prunes, reinitializes)
     """
-    mask = build_mask(model)
-    initial_weights = {n: w.cpu().detach() for n, w in model.named_parameters()}
+    # unpacking inputs
+    prune_strategy = lottery_ticket_params["prune_strategy"]
+    prune_rate = prune_strategy["rate"]
     train_data, val_data, test_data = dataset
 
-    prune_rate = lottery_ticket_params["prune_rate"]
+    # saving initial weights
+    initial_weights = {n: w.cpu().detach() for n, w in model.named_parameters()}
+    mask = build_mask(model)
+
+    # setting up logging
     experiment_logs = []
     writer = SummaryWriter(f'tensorboard/{lottery_ticket_params["expr_id"]}')
 
-    for prune_iter in range(lottery_ticket_params["pruning_iterations"]):
+    for prune_iter in range(prune_strategy["iterations"]):
         print(f"starting prune iteration {prune_iter}")
-        # reinitializing
+        # reinitializing weights
         model.load_state_dict(initial_weights)
 
-        # training
+        # updating pruning rate and training network to completion
         pruned_rate = 1-(1-prune_rate)**(prune_iter)
         expr_params = {
             "prune_iter": prune_iter, 
@@ -30,14 +35,17 @@ def run(model, dataset, lottery_ticket_params):
             **lottery_ticket_params["model_train_params"]
         }
         val_accs = train(model, mask, train_data, val_data, expr_params, writer)
+        
+        # scoring masked model
         test_acc = test(model, mask, test_data, expr_params)
         writer.add_scalar("test acc", test_acc, prune_iter)
         writer.flush()
 
-        # pruning
+        # pruning weights
         next_pass_prune_rate = 1-(1-prune_rate)**(1+prune_iter)
-        update_mask(model, mask, next_pass_prune_rate, lottery_ticket_params["prune_local"])
+        update_mask(model, mask, next_pass_prune_rate, prune_strategy)
 
+        # saving experiment to logs (idk if ncessary might want it later for graphing)
         experiment_logs.append({
             "prune_iter": prune_iter,
             "val_accs": val_accs,
@@ -75,11 +83,12 @@ def apply_mask(model, mask):
         model_named_parameters[name] = model_named_parameters[name] * param_mask.to(device)
     model.load_state_dict(model_named_parameters)
 
-def update_mask(model, mask, prune_rate=.2, local=False):
+def update_mask(model, mask, prune_rate, prune_strategy):
     """
     prunes model*mask weights at rate prune_rate and updates the mask.
     """
-    if local:
+
+    if prune_strategy["name"] == "local":
         apply_mask(model, mask)
         for name, param in model.named_parameters():
             if "weight" not in name:
@@ -101,7 +110,7 @@ def update_mask(model, mask, prune_rate=.2, local=False):
                 raise Exception(f"{num_equal} parameters have the same magnitude {kth_weight} - use iter prune strategy")
             elif num_equal > 1:
                 print(f"warning: {num_equal} parameters have the same magnitude {kth_weight}")
-    else:
+    elif prune_strategy["name"] == "global":
         # get magnitudes of weight matrices. ignores bias.
         apply_mask(model, mask)
         layer_weights = [(name, param) for name, param in model.named_parameters() if "weight" in name]
@@ -124,6 +133,8 @@ def update_mask(model, mask, prune_rate=.2, local=False):
             raise Exception(f"{num_equal} parameters have the same magnitude {kth_weight} - use iter prune strategy")
         elif num_equal > 1:
                 print(f"warning: {num_equal} parameters have the same magnitude {kth_weight}")
+    else:
+        raise Exception(f"prune strategy {prune_strategy} not found")
 
 def train(model, mask, train_data, val_data, expr_params, writer):
     val_accs = []
