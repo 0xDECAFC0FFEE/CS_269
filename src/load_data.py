@@ -2,7 +2,7 @@ import torchvision
 import torch
 
 def cifar10(args):
-    transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(),torchvision.transforms.Normalize((0.1307,), (0.3081,))])
+    transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(),torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
     train = torchvision.datasets.CIFAR10('data/CFAR10', train=True, download=True,transform=transform)
     test = torchvision.datasets.CIFAR10('data/CFAR10', train=False, download=True,transform=transform)
 

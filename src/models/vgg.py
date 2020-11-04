@@ -3,38 +3,8 @@ import torch.nn as nn
 import torch.nn.init as init
 import numpy as np
 
-layers_desc = [
-    ("conv", {"out": 64, "bn": False}), 
-    ("relu", {}),
-    ("conv", {"out": 64, "bn": False}), 
-    ("relu", {}),
-    ("pool", {}), 
-
-    ("conv", {"out": 128, "bn": False}), 
-    ("relu", {}),
-    ("conv", {"out": 128, "bn": False}), 
-    ("relu", {}),
-    ("pool", {}),
-
-    ("conv", {"out": 256, "bn": False}), 
-    ("relu", {}),
-    ("conv", {"out": 256, "bn": False}), 
-    ("relu", {}),
-    ("pool", {}),
-
-    ("flatten", {}), 
-
-    ("linear", {"out": 256}), 
-    ("relu", {}),
-    
-    ("linear", {"out": 256}), 
-    ("relu", {}),
-    
-    ("linear", {"out": num_classes})
-]
-
 class VGG_cifar10(nn.Module):
-    def __init__(self, data_input_shape=(3, 32, 32) num_classes=10):
+    def __init__(self, layers_desc, data_input_shape=(3, 32, 32)):
         super(VGG_cifar10, self).__init__()
 
         in_shape = data_input_shape

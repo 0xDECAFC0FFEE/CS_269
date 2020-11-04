@@ -7,6 +7,10 @@ import torch.nn as nn
 import torch.nn.init as init
 import random
 import datetime
+from pathlib import Path
+import subprocess
+import pickle
+import json
 
 class TopModelSaver():
     def __init__(self, location, config):
@@ -160,3 +164,33 @@ def weight_init(m):
                 init.orthogonal_(param.data)
             else:
                 init.normal_(param.data)
+
+class Logger:
+    def __init__(self, project_root, log_folder):
+        self.project_root = Path(project_root)
+        self.log_folder = self.project_root/log_folder
+
+    def save_snapshot(self, expr_id, expr_params=None, **kwargs):
+        log_folder = self.log_folder/expr_id
+        if log_folder.exists():
+            shutil.rmtree(log_folder)
+        
+        os.makedirs(log_folder)
+        files_to_log = subprocess.check_output(["git", "ls-files", "--full-name", self.project_root]).decode().split("\n")
+        for path in files_to_log:
+            if len(path.strip()) == 0: # stripping newlines
+                continue
+
+            src = self.project_root/path
+            dest = log_folder/path
+            if not dest.parent.exists():
+                os.makedirs(dest.parent)
+
+            shutil.copy(src, dest, follow_symlinks=False)
+
+        for name, value in kwargs.items():
+            with open(log_folder/f"{name}.pkl", "wb+") as handle:
+                pickle.dump(value, handle)
+        if expr_params != None:
+            with open(log_folder/"expr_params.json", "w+") as handle:
+                json.dump(expr_params, handle)
