@@ -11,6 +11,8 @@ from pathlib import Path
 import subprocess
 import pickle
 import json
+import torch
+import numpy as np
 
 class TopModelSaver():
     def __init__(self, location, config):
@@ -166,23 +168,39 @@ def weight_init(m):
                 init.normal_(param.data)
 
 class Logger:
-    def __init__(self, project_root, log_folder):
-        self.project_root = Path(project_root)
-        self.log_folder = self.project_root/log_folder
+    def __init__(self, project_folder=".", log_folder="./logs"):
+        self.project_folder = Path(project_folder).resolve()
+        self.log_folder = Path(log_folder).resolve()
 
-    def save_snapshot(self, expr_id, expr_params=None, **kwargs):
+    def save_snapshot(self, expr_id, **kwargs):
+        """
+        saves a copy of the directory project_folder in log_folder/expr_id
+        
+        - auto skips saving files not tracked by git
+        - auto skips saving anything in log_folder (don't want to recursively copy everything) 
+        - saves all named arguments as picked files
+
+        ex: 
+            l = Logger("/home/user/workspace", "./logs")
+            l.save_snapshot(str(datetime.now()))
+        """
         log_folder = self.log_folder/expr_id
+        
         if log_folder.exists():
             shutil.rmtree(log_folder)
         
         os.makedirs(log_folder)
-        files_to_log = subprocess.check_output(["git", "ls-files", "--full-name", self.project_root]).decode().split("\n")
+        files_to_log = subprocess.check_output(["git", "ls-files", "--full-name", self.project_folder]).decode().split("\n")
+        
         for path in files_to_log:
             if len(path.strip()) == 0: # stripping newlines
                 continue
 
-            src = self.project_root/path
+            src = self.project_folder/path
             dest = log_folder/path
+            if str(src.resolve()).startswith(str(self.log_folder)+os.sep):
+                continue
+
             if not dest.parent.exists():
                 os.makedirs(dest.parent)
 
@@ -191,6 +209,8 @@ class Logger:
         for name, value in kwargs.items():
             with open(log_folder/f"{name}.pkl", "wb+") as handle:
                 pickle.dump(value, handle)
-        if expr_params != None:
-            with open(log_folder/"expr_params.json", "w+") as handle:
-                json.dump(expr_params, handle)
+
+def set_seeds(seeds):
+    torch.manual_seed(seeds.get("torch", 222))
+    torch.cuda.manual_seed_all(seeds.get("cuda", 222))
+    np.random.seed(seeds.get("numpy", 222))

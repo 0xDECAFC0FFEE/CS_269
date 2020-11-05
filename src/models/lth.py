@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 import copy
 from ..utils import Logger
+from .mask_ops import build_mask, apply_mask, update_mask
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def run(dataset, lottery_ticket_params):
@@ -30,13 +31,12 @@ def run(dataset, lottery_ticket_params):
     mask = build_mask(model, prune_strategy)
 
     # setting up logging
-    experiment_logs, masks = [], []
+    masks = []
 
     Logger("/workspace", "logs").save_snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params=lottery_ticket_params,
         initial_weights=initial_weights,
-        experiment_logs=experiment_logs,
     )
     writer = SummaryWriter(f'tensorboard/{lottery_ticket_params["expr_id"]}')
 
@@ -44,7 +44,7 @@ def run(dataset, lottery_ticket_params):
         print(f"starting prune iteration {prune_iter}")
         # reinitializing weights
         model.load_state_dict(initial_weights)
-
+        
         # getting current pruned rate and training network to completion
         pruned_rate = 1-(1-prune_rate)**(prune_iter)
         expr_params = {
@@ -65,15 +65,6 @@ def run(dataset, lottery_ticket_params):
         next_pass_prune_rate = 1-(1-prune_rate)**(1+prune_iter)
         update_mask(model, mask, next_pass_prune_rate, prune_strategy)
 
-        # saving experiment to logs (idk if ncessary might want it later for graphing)
-        experiment_logs.append({
-            "prune_iter": prune_iter,
-            "val_accs": val_accs,
-            "test_acc": test_acc,
-            "prune_rate": pruned_rate,
-            "perc_left": 1-pruned_rate
-        })
-
         print(f"{prune_iter}. perc_left: {1-pruned_rate}, test_acc {test_acc}")
 
         if prune_strategy["name"] == "early_bird":
@@ -82,13 +73,12 @@ def run(dataset, lottery_ticket_params):
                 break
 
     writer.close()
-    Logger("/workspace", "logs").save_snapshot(
+    Logger("/workspace", "/workspace/logs").save_snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params=lottery_ticket_params,
         initial_weights=initial_weights,
-        experiment_logs=experiment_logs,
     )
-    return mask, experiment_logs
+    return mask
 
 def detect_early_bird(masks):
     if len(masks) < 2:
@@ -138,114 +128,9 @@ def initialize_optimizer(expr_params, model):
     else:
         raise Exception(f"optimizer {name} not implemented")
 
-def build_mask(model, prune_strategy):
-    mask = {}
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    if prune_strategy["name"] in ["local", "global"]:
-        for name, param in model.named_parameters():
-            if "weight" not in name:
-                continue
-            mask[name] = torch.ones_like(param, requires_grad=False, dtype=torch.bool, device="cpu")
-    elif prune_strategy["name"] == "early_bird":
-        for name, param in model.named_parameters():
-            if "weight" not in name:
-                continue
-            mask[name] = torch.ones_like(param, requires_grad=False, dtype=torch.bool, device="cpu")
-    else:
-        raise Exception(f"prune strategy {prune_strategy['name']} not implemented yet")
-    return mask
-
-def apply_mask(model, mask):
-    model_named_parameters = dict(model.named_parameters())
-    device = next(model.parameters()).device
-    for name, param_mask in mask.items():
-        model_named_parameters[name] = model_named_parameters[name] * param_mask.to(device)
-    model.load_state_dict(model_named_parameters, strict=False) # strict is false as we don't want to add buffers
-
-def update_mask(model, mask, prune_rate, prune_strategy):
-    """
-    prunes model*mask weights at rate prune_rate and updates the mask.
-    """
-
-    if prune_strategy["name"] == "local":
-        apply_mask(model, mask)
-        for name, param in model.named_parameters():
-            if "weight" not in name:
-                continue
-            # get magnitudes of weight matrices. ignores bias.
-            weight_magnitudes = param.flatten().cpu().detach().numpy().astype(np.float64)
-            weight_magnitudes = np.random.normal(scale=1e-45, size=weight_magnitudes.shape)
-            weight_magnitudes = np.abs(weight_magnitudes)
-
-            # gets the kth weight
-            num_weights = len(weight_magnitudes)
-            k = int(num_weights*prune_rate)
-            kth_weight = np.partition(weight_magnitudes, k)[k]
-
-            # updating mask
-            mask[name] = (param.abs() > kth_weight).cpu()
-            num_equal = (param.abs() == kth_weight).sum()
-            if num_equal > 100:
-                raise Exception(f"{num_equal} parameters have the same magnitude {kth_weight} - use iter prune strategy")
-            elif num_equal > 1:
-                print(f"warning: {num_equal} parameters have the same magnitude {kth_weight}")
-    elif prune_strategy["name"] == "global":
-        # get magnitudes of weight matrices. ignores bias.
-        apply_mask(model, mask)
-        layer_weights = [(name, param) for name, param in model.named_parameters() if "weight" in name]
-        weight_magnitudes = [param.flatten().cpu().detach().numpy().astype(np.float64) for name, param in layer_weights]
-        weight_magnitudes = np.concatenate(weight_magnitudes)
-        weight_magnitudes = np.abs(weight_magnitudes + np.random.normal(scale=1e-39, size=weight_magnitudes.shape))
-
-        # gets the kth weight
-        num_weights = len(weight_magnitudes)
-        k = int(num_weights*prune_rate)
-        kth_weight = np.partition(weight_magnitudes, k)[k]
-
-        # updating mask
-        num_equal = 0
-        for name, parameter in model.named_parameters():
-            if "weight" in name:
-                mask[name] = (parameter.abs() > kth_weight).cpu()
-                num_equal += (parameter.abs() == kth_weight).sum()
-        if num_equal > 100:
-            raise Exception(f"{num_equal} parameters have the same magnitude {kth_weight} - use iter prune strategy")
-        elif num_equal > 1:
-                print(f"warning: {num_equal} parameters have the same magnitude {kth_weight}")
-    elif prune_strategy["name"] == "early_bird":
-        # get magnitudes of weight matrices. ignores bias.
-        apply_mask(model, mask)
-
-        bn_layers = []
-        for bn_layer_name, w in model.named_children():
-            if isinstance(w, torch.nn.BatchNorm2d):
-                bn_layers.append((f"{bn_layer_name}.weight", w.weight))
-
-        weight_magnitudes = [param.flatten().cpu().detach().numpy().astype(np.float64) for name, param in bn_layers]
-        weight_magnitudes = np.concatenate(weight_magnitudes)
-        weight_magnitudes = np.abs(weight_magnitudes + np.random.normal(scale=1e-39, size=weight_magnitudes.shape))
-
-        # gets the kth weight
-        num_weights = len(weight_magnitudes)
-        k = int(num_weights*prune_rate)
-        kth_weight = np.partition(weight_magnitudes, k)[k]
-
-        # updating mask
-        num_equal = 0
-        for bn_layer_name, w in model.named_children():
-            if isinstance(w, torch.nn.BatchNorm2d):
-                mask[f"{bn_layer_name}.weight"] = (w.weight.abs() > kth_weight).cpu()
-                num_equal += (w.weight.abs() == kth_weight).sum()
-
-        if num_equal > 100:
-            raise Exception(f"{num_equal} parameters have the same magnitude {kth_weight} - use iter prune strategy")
-        elif num_equal > 1:
-                print(f"warning: {num_equal} parameters have the same magnitude {kth_weight}")
-    else:
-        raise Exception(f"prune strategy {prune_strategy} not found")
-
 def train(model, mask, train_data, val_data, expr_params, writer):
+    assert(expr_params["dataset_name"] in ["mnist", "cifar10"])
+
     apply_mask(model, mask)
     val_accs = []
     best_val_acc, best_model_state = 0, {}

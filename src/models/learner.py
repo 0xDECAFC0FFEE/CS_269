@@ -2,17 +2,16 @@ import  torch
 from    torch import nn
 from    torch.nn import functional as F
 import  numpy as np
-
+from collections import OrderedDict
+from src.models.mask_ops import apply_mask, apply_mask_state_dict
 
 
 class Learner(nn.Module):
     """
-
     """
 
     def __init__(self, config, imgc, imgsz):
         """
-
         :param config: network config file, type:list of (string, list)
         :param imgc: 1 or 3
         :param imgsz:  28 or 84
@@ -23,9 +22,8 @@ class Learner(nn.Module):
         self.config = config
 
         # this dict contains all tensors needed to be optimized
-        self.vars = nn.ParameterList()
+        # self.vars = nn.ParameterDict()
         # running_mean and running_var
-        self.vars_bn = nn.ParameterList()
 
         for i, (name, param) in enumerate(self.config):
             if name is 'conv2d':
@@ -33,40 +31,46 @@ class Learner(nn.Module):
                 w = nn.Parameter(torch.ones(*param[:4]))
                 # gain=1 according to cbfin's implementation
                 torch.nn.init.kaiming_normal_(w)
-                self.vars.append(w)
+                # self.vars[f"{i}_weight"] = w
+                self.register_parameter(f"{i}_weight", w)
                 # [ch_out]
-                self.vars.append(nn.Parameter(torch.zeros(param[0])))
+                # self.vars[f"{i}_bias"] = nn.Parameter(torch.zeros(param[0]))
+                self.register_parameter(f"{i}_bias", nn.Parameter(torch.zeros(param[0])))
 
             elif name is 'convt2d':
                 # [ch_in, ch_out, kernelsz, kernelsz, stride, padding]
                 w = nn.Parameter(torch.ones(*param[:4]))
                 # gain=1 according to cbfin's implementation
                 torch.nn.init.kaiming_normal_(w)
-                self.vars.append(w)
+                # self.vars[f"{i}_weight"] = w
+                self.register_parameter(f"{i}_weight", w)
                 # [ch_in, ch_out]
-                self.vars.append(nn.Parameter(torch.zeros(param[1])))
+                # self.vars[f"{i}_bias"] = nn.Parameter(torch.zeros(param[1]))
+                self.register_parameter(f"{i}_bias", nn.Parameter(torch.zeros(param[1])))
 
             elif name is 'linear':
                 # [ch_out, ch_in]
                 w = nn.Parameter(torch.ones(*param))
                 # gain=1 according to cbfinn's implementation
                 torch.nn.init.kaiming_normal_(w)
-                self.vars.append(w)
+                # self.vars[f"{i}_weight"] = w
+                self.register_parameter(f"{i}_weight", w)
                 # [ch_out]
-                self.vars.append(nn.Parameter(torch.zeros(param[0])))
+                # self.vars[f"{i}_bias"] = nn.Parameter(torch.zeros(param[0]))
+                self.register_parameter(f"{i}_bias", nn.Parameter(torch.zeros(param[0])))
 
             elif name is 'bn':
                 # [ch_out]
                 w = nn.Parameter(torch.ones(param[0]))
-                self.vars.append(w)
+                # self.vars[f"{i}_weight"] = w
+                self.register_parameter(f"{i}_weight", w)
                 # [ch_out]
-                self.vars.append(nn.Parameter(torch.zeros(param[0])))
+                # self.vars[f"{i}_bias"] = nn.Parameter(torch.zeros(param[0]))
+                self.register_parameter(f"{i}_bias", nn.Parameter(torch.zeros(param[0])))
 
                 # must set requires_grad=False
-                running_mean = nn.Parameter(torch.zeros(param[0]), requires_grad=False)
-                running_var = nn.Parameter(torch.ones(param[0]), requires_grad=False)
-                self.vars_bn.extend([running_mean, running_var])
-
+                self.register_buffer(f"{i}_running_mean", torch.zeros(param[0]))
+                self.register_buffer(f"{i}_running_var", torch.ones(param[0]))
 
             elif name in ['tanh', 'relu', 'upsample', 'avg_pool2d', 'max_pool2d',
                           'flatten', 'reshape', 'leakyrelu', 'sigmoid']:
@@ -118,7 +122,7 @@ class Learner(nn.Module):
 
 
 
-    def forward(self, x, vars=None, bn_training=True):
+    def forward(self, mask, x, vars=None, bn_training=True):
         """
         This function can be called by finetunning, however, in finetunning, we dont wish to update
         running_mean/running_var. Thought weights/bias of bn is updated, it has been separated by fast_weights.
@@ -131,34 +135,36 @@ class Learner(nn.Module):
         """
 
         if vars is None:
-            vars = self.vars
+            # vars = self.vars
+            apply_mask(self, mask)
+            vars = OrderedDict(self.named_parameters())
+        else:
+            vars = apply_mask_state_dict(vars, mask)
+
+        bn_vars = OrderedDict(self.named_buffers())
 
         idx = 0
         bn_idx = 0
 
-        for name, param in self.config:
+        for idx, (name, param) in enumerate(self.config):
             if name is 'conv2d':
-                w, b = vars[idx], vars[idx + 1]
+                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
                 # remember to keep synchrozied of forward_encoder and forward_decoder!
                 x = F.conv2d(x, w, b, stride=param[4], padding=param[5])
-                idx += 2
                 # print(name, param, '\tout:', x.shape)
             elif name is 'convt2d':
-                w, b = vars[idx], vars[idx + 1]
+                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
                 # remember to keep synchrozied of forward_encoder and forward_decoder!
                 x = F.conv_transpose2d(x, w, b, stride=param[4], padding=param[5])
-                idx += 2
                 # print(name, param, '\tout:', x.shape)
             elif name is 'linear':
-                w, b = vars[idx], vars[idx + 1]
+                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
                 x = F.linear(x, w, b)
-                idx += 2
                 # print('forward:', idx, x.norm().item())
             elif name is 'bn':
-                w, b = vars[idx], vars[idx + 1]
-                running_mean, running_var = self.vars_bn[bn_idx], self.vars_bn[bn_idx+1]
+                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
+                running_mean, running_var = bn_vars[f"{idx}_running_mean"], bn_vars[f"{idx}_running_var"]
                 x = F.batch_norm(x, running_mean, running_var, weight=w, bias=b, training=bn_training)
-                idx += 2
                 bn_idx += 2
 
             elif name is 'flatten':
@@ -185,9 +191,10 @@ class Learner(nn.Module):
             else:
                 raise NotImplementedError
 
+
         # make sure variable is used properly
-        assert idx == len(vars)
-        assert bn_idx == len(self.vars_bn)
+        # assert idx == len(vars)
+        # assert bn_idx == len(self.vars_bn)
 
 
         return x
@@ -195,7 +202,6 @@ class Learner(nn.Module):
 
     def zero_grad(self, vars=None):
         """
-
         :param vars:
         :return:
         """
@@ -209,9 +215,9 @@ class Learner(nn.Module):
                     if p.grad is not None:
                         p.grad.zero_()
 
-    def parameters(self):
-        """
-        override this function since initial parameters will return with a generator.
-        :return:
-        """
-        return self.vars
+    # def parameters(self):
+    #     """
+    #     override this function since initial parameters will return with a generator.
+    #     :return:
+    #     """
+    #     return self.vars.values()
