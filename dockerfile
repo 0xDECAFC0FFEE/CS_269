@@ -3,7 +3,7 @@ FROM pytorch/pytorch
 # update system packages
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get -y upgrade
-RUN apt-get -y install build-essential wget tmux nmap vim htop
+RUN apt-get -y install build-essential wget tmux nmap vim htop unzip
 
 # install zsh
 RUN sh -c "$(wget -O- https://raw.githubusercontent.com/deluan/zsh-in-docker/master/zsh-in-docker.sh)"
@@ -34,5 +34,6 @@ RUN conda config --append channels conda-forge
 COPY requirements.txt /root/requirements.txt
 RUN conda install --file /root/requirements.txt
 RUN jupyter lab build
+RUN conda install gdown -y
 
 CMD ./start_jupyter_tensorboard_ssh.sh && `which zsh`
