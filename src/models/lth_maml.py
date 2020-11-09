@@ -1,7 +1,7 @@
 from itertools import chain
 import torch.nn.functional as F
 import torch.nn  as nn
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -35,12 +35,17 @@ def run(dataset, lottery_ticket_params):
     mask = build_mask(model.net, prune_strategy)
 
     # setting up logging
-    masks = []
+    masks, model_state_dicts = [], []
+    val_accs_per_prune_iter = []
+    test_accs_per_prune_iter = []
 
-    Logger("/workspace", "/workspace/logs").save_snapshot(
+    logger = Logger("/workspace", "/workspace/logs")
+    logger.save_snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
-        expr_params=lottery_ticket_params,
+        expr_params_JSON=lottery_ticket_params,
         initial_weights=initial_weights,
+        masks=masks,
+        model_state_dicts=model_state_dicts,
     )
     writer = SummaryWriter(f'tensorboard/{lottery_ticket_params["expr_id"]}')
 
@@ -59,12 +64,25 @@ def run(dataset, lottery_ticket_params):
         val_accs, best_mask_model = train(model, mask, train_data, val_data, expr_params, writer, prune_iter)
         model.load_state_dict(best_mask_model)
         masks.append(copy.deepcopy(mask))
+        model_state_dicts.append(best_mask_model)
+        val_accs_per_prune_iter.append(val_accs)
 
         # scoring masked model
         test_accs = test(model, mask, test_data, expr_params)
         for i, test_acc in enumerate(test_accs):
             writer.add_scalars("test acc", {f"prune iteration {prune_iter}": test_acc}, i)
         writer.flush()
+        test_accs_per_prune_iter.append(test_accs)
+
+        logger.save_snapshot(
+            expr_id=lottery_ticket_params["expr_id"], 
+            initial_weights=initial_weights,
+            masks=masks,
+            model_state_dicts=model_state_dicts,
+            expr_params_JSON=lottery_ticket_params,
+            test_accs_TXT="\n".join([str(accs) for accs in test_accs_per_prune_iter]),
+            val_accs_TXT="\n".join([str(accs) for accs in val_accs_per_prune_iter]),
+        )
 
         # pruning weights
         next_pass_prune_rate = 1-(1-prune_rate)**(1+prune_iter)
@@ -72,11 +90,6 @@ def run(dataset, lottery_ticket_params):
         update_mask(model.net, mask, next_pass_prune_rate, prune_strategy)
 
         print(f"{prune_iter}. perc_left: {1-pruned_rate}, test_acc {test_accs}")
-
-        if prune_strategy["name"] == "early_bird":
-            if detect_early_bird(masks):
-                print("found early bird ticket")
-                break
 
     writer.close()
     return mask
@@ -98,38 +111,38 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
     val_accs = []
     best_val_acc, best_model_state = 0, None
 
-    for epoch in tqdm(list(range(expr_params["training_iterations"]//10000))):
+    for epoch in list(range(expr_params["training_iterations"]//10000)):
         # fetch meta_batchsz num of episode each time
         print(f"train epoch {epoch}")
-        pbar = tqdm(total=len(train_data)) # not wrapping the train_data in tqdm as it causes a threading error
+        # pbar = tqdm(total=len(train_data), leave=False) # not wrapping the train_data in tqdm as it causes a threading error
         for step, (x_spt, y_spt, x_qry, y_qry) in enumerate(train_data):
 
             x_spt, y_spt, x_qry, y_qry = x_spt.to(device), y_spt.to(device), x_qry.to(device), y_qry.to(device)
 
             accs = model(mask, x_spt, y_spt, x_qry, y_qry)
-            writer.add_scalars(f"prune {prune_iter} train passes", {f"epoch {epoch}": accs[-1]}, step)
+            writer.add_scalars(f"prune {prune_iter} train passes", {f"epoch {epoch}": max(accs)}, step)
 
             if step % 30 == 0:
-                print('step:', step, '\ttraining acc:', accs)
+                print(f" step: {step} \ttraining acc: {accs}")
 
-            if step % 500 == 5:  # evaluation
+            if step % 300 == 0:  # evaluation
                 print("validating model...")
                 
                 accs = test(model, mask, val_data, expr_params)
 
                 print('val acc:', accs)
-                writer.add_scalars(f"prune {prune_iter} val passes", {f"epoch {epoch}": accs[-1]}, step)
-                val_accs.append(accs[-1])
-                if accs[-1] > best_val_acc:
-                    best_val_acc = accs[-1]
+                writer.add_scalars(f"prune {prune_iter} val passes", {f"epoch {epoch}": max(accs)}, step)
+                val_accs.append(max(accs))
+                if max(accs) > best_val_acc:
+                    best_val_acc = max(accs)
                     best_model_state = {n: w.cpu().detach() for n, w in model.state_dict().items()}
-            
-            pbar.update(1)
-            # if step == 6:
-            #     break
-        # if epoch == 2:
+
+            # pbar.update(1)
+        #     if step == 4:
+        #         break
+        # if epoch == 3:
         #     break
-        pbar.close()
+        # pbar.close()
     return val_accs, best_model_state
 
 def test(model, mask, test_data, expr_params):

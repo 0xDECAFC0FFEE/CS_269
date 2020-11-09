@@ -178,11 +178,11 @@ class Logger:
         
         - auto skips saving files not tracked by git
         - auto skips saving anything in log_folder (don't want to recursively copy everything) 
-        - saves all named arguments as picked files
+        - arguments that end in "_JSON" are saved as json files
+        - arguments that end in "_TXT" are saved as text files
+        - by default, arguments are saved as pickle files
 
-        ex: 
-            l = Logger("/home/user/workspace", "./logs")
-            l.save_snapshot(str(datetime.now()))
+        Logger()
         """
         log_folder = self.log_folder/expr_id
         
@@ -207,8 +207,21 @@ class Logger:
             shutil.copy(src, dest, follow_symlinks=False)
 
         for name, value in kwargs.items():
-            with open(log_folder/f"{name}.pkl", "wb+") as handle:
-                pickle.dump(value, handle)
+            json_flag = "_JSON"
+            txt_flag = "_TXT"
+            
+            if name[-len(json_flag):] == json_flag:
+                name = name[:-len(json_flag)]
+                with open(log_folder/f"{name}.json", "w+") as handle:
+                    json.dump(value, handle)
+            elif name[-len(txt_flag):] == txt_flag:
+                name = name[:-len(txt_flag)]
+                with open(log_folder/f"{name}.txt", "w+") as handle:
+                    handle.write(value)
+            else:
+                with open(log_folder/f"{name}.pkl", "wb+") as handle:
+                    pickle.dump(value, handle)
+
 
 def set_seeds(seeds):
     torch.manual_seed(seeds.get("torch", 222))
