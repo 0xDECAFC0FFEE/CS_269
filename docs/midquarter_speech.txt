@@ -1,0 +1,57 @@
+
+
+Hi everybody. We're Lucas and Daniel and we're presenting our work on pruning meta learning algorithms for edge computing
+
+=> Introduction
+
+Machine Learning has had major impacts throughout all of computing but edge computing has lagged behind. Some limitations on the deployment of machine learning systems on edge devices are as follows: Firstly, edge devices are frequently memory constrained. Large models are simply unable to be trained in these environments if they don't fit in the device's memory. Secondly, training models locally requires large amounts of energy and compute time. This could be detrimental to training models on battery powered edge devices such as phones or rural devices with intermittent power. Thirdly, some edge devices collect massive amounts of sensor data but are unable to upload it to cloud services due to privacy or cellular bandwidth constraints. Ideally, models used in these circumstances are trained locally instead of on more powerful cloud services. This is common in biotech applications and smart agriculture. 
+
+=> Meta Learning
+
+In order to handle these challenges unique to edge computing, a possible solution comes in the form of meta learning. Meta learning is a branch of machine learning concerned with training meta models to adapt to new tasks quickly by training on other tasks. Tasks could practically be anything but are generally related to one another to get good results during meta learning. These approaches are well suited to the challenges common amongst edge devices as they allow central servers to train meta models that generalize to new tasks quickly. These models could then be deployed to a fleet of small edge devices to fit to the local tasks. This alleviates many of the earlier problems. Meta learning allows training on edge devices which circumvents sending any information to remote servers. Fine tuning the trained meta model locally for each task specific model will be significantly faster and cost far less energy than training a new model for each new task. Meta models have the added benefit of leveraging features learned from different but related tasks to perform on tasks for which there exists few data points
+
+Amongst the many meta learning algorithms, we are currently focused on an approach known as Model Agnostic Meta Learning, or MAML. It describes a standardized process by which meta models could be trained from any gradient descent based model in a small number of finetuning steps.
+
+=> The Lottery Ticket Hypothesis
+
+We intend to couple MAML with a recent development in model pruning called the Lottery Ticket Hypothesis. It proposes a pruning algorithm that consistently uncovers sub-networks of any fully connected neural network with the same or greater test accuracy while retaining only a small fraction of the weights. The Lottery Ticket Hypothesis presents a process by which any weight based neural network could be pruned. These subnetworks are discovered through an iterative train - prune - reinitialization process. They empirically show that networks generally contain a higher scoring sparse subnetwork and that later iterations of this training process converge in very few training epochs. 
+
+Applying their sparsification algorithm to MAML has several benefits to the earlier challenges common to ml in edge devices. Firstly, the masked models generated from the lottery ticket hypothesis are incredibly sparse. It has been shown to decrease parameter counts of networks by over 90% with no loss in test accuracy. This could relieve memory constrained devices by storing parameters as sparse matrices. Secondly, the sparsity induced through the pruning algorithm results in significant improvements to network training time. Not only are there fewer operations to do during meta model finetuning due to the sparse matrices but models sparsified through the process have also been shown to converge in far fewer iterations than the original dense network. Thirdly, the lottery ticket pruning process is entirely model agnostic. This synergizes well with MAML as both processes work for all networks with loss functions. Lastly, these pruned models have been shown to generalize better than their initial unpruned dense networks. This could increase the test accuracy of our meta models.
+
+=> related work: Early Bird Tickets
+
+The lottery ticket process is very computationally expensive but potentially unnecessary. This paper describes an alternate pruning scheme where network masks are generated rapidly through a form of early stopping. The early phase of network training generally consists of networks learning important patterns. They find that only the early phase is necessary for selecting pruned weights. In their modified training process, on each training epoch, they generate a new mask. Instead of stopping training early when validation scores drop, they stop when the masks generated from epoch to epoch are stable. This empirically happens far sooner than the validation scores dropping and allows their networks to train for far fewer epochs than the lottery ticket hypothesis and ultimately could reduce the training times by up to 71%. They also recommend using very high learning rates and low precision training. We plan on replacing the lottery ticket hypothesis with this in our model.
+
+========================
+
+Daniel's stuff
+
+=> Related work: Model Agnostic Meta Learning
+
+=> Related work: Model Agnostic Meta Learning
+
+=> Related work: Model Agnostic Meta Learning
+
+=> Related Work: Sparse MAML
+
+=> Proposed Method
+
+=> Experimental Setup
+
+========================
+
+
+
+
+=> Results 1
+
+Preliminary results on sparsifying the meta model can be seen in the Figure. The graph shows the maximum accuracy before early stopping triggered on 17 pruning iterations of our 5 way 1 shot LTH-MAML-VGG network. The shade of green of each datapoint indicates the epoch that early stopping triggered with lighter shades of green indicating that early stopping triggered earlier. As expected, the sparsification due to the pruning slightly increased the testing scores to 46.17% and 46.07% at 52% and 61% sparsity. The original network had 45.92% testing accuracy which is 0.25% lower than the pruned ones. Early stopping triggered after 2 epochs for both of the pruned models. This indicates that our technique could significantly speed up finetuning speed as the original network trained for the maximum allocated time which is 5 times the finetuning time of our highest scoring pruned networks. 
+
+=> Results 2
+
+This figure shows the same 17 pruning iterations of our meta model. Under our current hyperparameters, we shouldn't sparsify our model below 77% weights unpruned as the testing accuracy seems to drop off rapidly. It is possible that pruning at a lower rate for longer could allow us to compress the model past 77%.
+
+=> Further work
+
+While our scores increased with pruning, we intend to run more tests in the future. Specifically, one, our unpruned model, which should be identical to the paper's model, is still scoring about 1% lower than the original paper. Two, we set an upper bound on the number of finetuning epochs at 10 to follow the paper's precendent but the unpruned network didn't trigger early stopping. This indicates that the unpruned network's final score could potentially be higher than the pruned networks' scores. Three, we couldn't tune any hyperparameters due to time constraints. And four, With more runs, we could be more certain that our scores aren't flukes.
+

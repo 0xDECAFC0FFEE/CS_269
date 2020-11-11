@@ -137,12 +137,6 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
                     best_val_acc = max(accs)
                     best_model_state = {n: w.cpu().detach() for n, w in model.state_dict().items()}
 
-            # pbar.update(1)
-        #     if step == 4:
-        #         break
-        # if epoch == 3:
-        #     break
-        # pbar.close()
     return val_accs, best_model_state
 
 def test(model, mask, test_data, expr_params):

@@ -172,6 +172,16 @@ class Logger:
         self.project_folder = Path(project_folder).resolve()
         self.log_folder = Path(log_folder).resolve()
 
+        assert(self.project_folder.exists() and self.project_folder.is_dir())
+        if not self.log_folder.exists():
+            os.makedirs(self.log_folder)
+
+    def zip_logs(self):
+        for file in os.listdir(self.log_folder):
+            if (self.log_folder/file).is_dir():
+                shutil.make_archive(self.log_folder/file, "zip", self.log_folder/file)
+                shutil.rmtree(self.log_folder/file)
+
     def save_snapshot(self, expr_id, **kwargs):
         """
         saves a copy of the directory project_folder in log_folder/expr_id

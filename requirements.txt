@@ -21,11 +21,11 @@ bzip2=1.0.8=h7b6447c_0
 c-ares=1.16.1=h516909a_3
 ca-certificates=2020.10.14=0
 cachetools=4.1.1=py_0
-certifi=2020.6.20=py37_0
+certifi=2020.6.20=pyhd3eb1b0_3
 cffi=1.14.0=py37he30daa8_1
 chardet=3.0.4=py37_1003
 click=7.1.2=pyh9f0ad1d_0
-conda=4.9.0=py37_0
+conda=4.9.1=py37h06a4308_0
 conda-build=3.18.11=py37_0
 conda-package-handling=1.6.1=py37h7b6447c_0
 cryptography=2.9.2=py37h1ba5d50_0
