@@ -2,7 +2,6 @@ import torch
 import numpy as np
 from src import utils, load_data
 from src.models import lth_maml as lth
-from tqdm.notebook import tqdm
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import torchvision

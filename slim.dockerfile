@@ -1,9 +1,9 @@
-FROM pytorch/pytorch
-
-# update system packages
-ARG DEBIAN_FRONTEND=noninteractive
+FROM conda/miniconda3
 RUN apt-get update && apt-get -y upgrade
-RUN apt-get -y install build-essential wget tmux nmap vim htop
+RUN apt-get -y install apt-utils build-essential wget tmux nmap vim htop curl git
+RUN conda update -n base -c defaults conda
+# install pytorch cpu
+RUN conda install pytorch torchvision cpuonly -c pytorch
 
 # install zsh
 RUN sh -c "$(wget -O- https://raw.githubusercontent.com/deluan/zsh-in-docker/master/zsh-in-docker.sh)"
@@ -22,18 +22,17 @@ RUN git clone https://github.com/0xDECAFC0FFEE/.setup.git /root/.setup
 RUN conda install --file /root/.setup/requirements.txt
 RUN python3 /root/.setup/setup.py --disable-ssh
 
-# installing notebook tqdm for jupyter
-RUN conda install jupyterlab -y
-RUN conda install -c conda-forge ipywidgets -y
-RUN conda upgrade -c conda-forge jupyterlab -y
-RUN conda install nodejs -y
-RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager -y
+# skipping jupyter install
+# RUN conda install jupyterlab -y
+# RUN conda install -c conda-forge ipywidgets -y
+# RUN conda upgrade -c conda-forge jupyterlab -y
+# RUN conda install nodejs -y
+# RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager -y
 
 # installing project requirements.txt
 RUN conda config --append channels conda-forge
-COPY requirements.txt /root/requirements.txt
+COPY requirements_slim.txt /root/requirements.txt
 RUN conda install --file /root/requirements.txt
-RUN jupyter lab build
-RUN conda install gdown -y
 
-CMD ./start_jupyter_tensorboard_ssh.sh && `which zsh`
+# CMD ./start_jupyter_tensorboard_ssh.sh && `which zsh`
+CMD service ssh restart && `which zsh`

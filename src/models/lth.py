@@ -1,7 +1,7 @@
 from itertools import chain
 import torch.nn.functional as F
 import torch.nn  as nn
-from tqdm.notebook import tqdm
+import tqdm
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
