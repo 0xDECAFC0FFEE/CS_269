@@ -96,9 +96,9 @@ def new_expr_id(prepend=""):
 
     nonce = random.choices(chars+chars.upper()+nums, k=5)
     nonce = "".join(nonce)
-    time = datetime.datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
+    time = datetime.datetime.now().strftime("%Y-%m-%d|%H:%M:%S")
 
-    return f"expr {time} {prepend} {nonce}"
+    return f"expr|{time}|{nonce}|{prepend}"
 
 def weight_init(m):
     '''
@@ -172,32 +172,47 @@ class Logger:
         self.project_folder = Path(project_folder).resolve()
         self.log_folder = Path(log_folder).resolve()
 
-        assert(self.project_folder.exists() and self.project_folder.is_dir())
         if not self.log_folder.exists():
             os.makedirs(self.log_folder)
 
+        assert(self.project_folder.exists() and self.project_folder.is_dir())
+
     def zip_logs(self):
         for file in os.listdir(self.log_folder):
-            if (self.log_folder/file).is_dir():
+            if (self.log_folder/file).is_dir() and not (self.log_folder/(file+".zip")).exists():
                 shutil.make_archive(self.log_folder/file, "zip", self.log_folder/file)
                 shutil.rmtree(self.log_folder/file)
 
     def save_snapshot(self, expr_id, **kwargs):
         """
-        saves a copy of the directory project_folder in log_folder/expr_id
-        
+        saves a copy of the directory project_folder and any kwargs in log_folder/expr_id
+
+        - raises exception if directory already exists
         - auto skips saving files not tracked by git
         - auto skips saving anything in log_folder (don't want to recursively copy everything) 
         - arguments that end in "_JSON" are saved as json files
         - arguments that end in "_TXT" are saved as text files
         - by default, arguments are saved as pickle files
 
-        Logger()
+        logger = Logger("/workspace", "/workspace/logs")
+        logger.save_snapshot(
+            "experiment 5", 
+            training_params_JSON=training_params,
+            testing_accs_TXT=testing_accs,
+            model_parameters=model_parameters
+        )
+        # do stuff
+        logger.update_snapshot(
+            "experiment 5", 
+            training_params_JSON=training_params,
+            testing_accs_TXT=testing_accs,
+            model_parameters=model_parameters
+        )
         """
         log_folder = self.log_folder/expr_id
         
         if log_folder.exists():
-            shutil.rmtree(log_folder)
+            raise Exception(f"log folder {log_folder} already exists")
         
         os.makedirs(log_folder)
         files_to_log = subprocess.check_output(["git", "ls-files", "--full-name", self.project_folder]).decode().split("\n")
@@ -216,6 +231,31 @@ class Logger:
 
             shutil.copy(src, dest, follow_symlinks=False)
 
+        self.update_snapshot(expr_id, **kwargs)
+
+    def update_snapshot(self, expr_id, **kwargs):
+        """
+        updates a log snapshot that exists with values in the kwargs.
+
+        - arguments that end in "_JSON" are saved as json files
+        - arguments that end in "_TXT" are saved as text files
+        - by default, arguments are saved as pickle files
+        - will save argument values in files based off of the parameter names
+
+        logger = Logger("/workspace", "/workspace/logs")
+        logger.save_snapshot("experiment 5")
+        logger.update_snapshot(
+            "experiment 5", 
+            training_params_JSON=training_params,
+            testing_accs_TXT=testing_accs,
+            model_parameters=model_parameters
+        )
+        """
+        log_folder = self.log_folder/expr_id
+        
+        if not log_folder.exists():
+            raise Exception(f"log folder {log_folder} doesn't exist - call save_snapshot first")
+
         for name, value in kwargs.items():
             json_flag = "_JSON"
             txt_flag = "_TXT"
@@ -231,6 +271,29 @@ class Logger:
             else:
                 with open(log_folder/f"{name}.pkl", "wb+") as handle:
                     pickle.dump(value, handle)
+
+    def snapshot(self, expr_id, **kwargs):
+        """
+        snapshots a directory by saving workspace directory and saving any kwargs
+
+        first call with a specific expr_id will copy the workspace directory in that log directory
+        subsequent calls will only update the log directory with the kwarg values
+        see update_snapshot for kwargs naming scheme
+
+        logger = Logger("/workspace", "/workspace/logs")
+        logger.snapshot(
+            "experiment 5", 
+            training_params_JSON=training_params,
+            testing_accs_TXT=testing_accs,
+            model_parameters=model_parameters
+        )
+        """
+        log_folder = self.log_folder/expr_id
+
+        if not log_folder.exists():
+            self.save_snapshot(expr_id, **kwargs)
+        else:
+            self.update_snapshot(expr_id, **kwargs)
 
 
 def set_seeds(seeds):

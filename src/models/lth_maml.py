@@ -40,7 +40,7 @@ def run(dataset, lottery_ticket_params):
     test_accs_per_prune_iter = []
 
     logger = Logger("/workspace", "/workspace/logs")
-    logger.save_snapshot(
+    logger.snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params_JSON=lottery_ticket_params,
         initial_weights=initial_weights,
@@ -74,7 +74,7 @@ def run(dataset, lottery_ticket_params):
         writer.flush()
         test_accs_per_prune_iter.append(test_accs)
 
-        logger.save_snapshot(
+        logger.snapshot(
             expr_id=lottery_ticket_params["expr_id"], 
             initial_weights=initial_weights,
             masks=masks,
