@@ -7,7 +7,43 @@ import collections
 from PIL import Image
 import csv
 import random
+from .utils import fs_greedy_load
+import pickle
+from pathlib import Path
+from tqdm import tqdm
+import re
+import shutil
 
+class cached_transformer:
+    def __init__(self, images_source_path, cache, transform, reload_cache=False):
+        if reload_cache:
+            shutil.rmtree(cache)
+        try:
+            with open(cache/"image_path_to_id.pkl", "rb") as handle:
+                self.map = pickle.load(handle)
+
+            self.data = fs_greedy_load(cache/"data.npy")
+        except FileNotFoundError:
+            print("loading transformed images into cache")
+            os.makedirs(cache, exist_ok=True)
+            pattern = re.compile("n[0-9]{16}\.jpg")
+
+            images = [path for path in os.listdir(images_source_path) if pattern.match(path)]
+            img_path_to_id = {path: id for id, path in enumerate(images)}
+
+            tramsformed_images = [transform(images_source_path/path).numpy() for path in tqdm(images)]
+
+            self.data = fs_greedy_load(cache/"data.npy", tramsformed_images)
+            self.map = img_path_to_id
+            with open(cache/"image_path_to_id.pkl", "wb+") as handle:
+                pickle.dump(self.map, handle)
+            print("loaded transformed images into cache")
+
+    def __call__(self, path):
+        return self.data[self.map[path]]
+    
+    def __len__(self):
+        return len(self.data)
 
 class MiniImagenet(Dataset):
     """
@@ -46,22 +82,24 @@ class MiniImagenet(Dataset):
         print('shuffle DB :%s, b:%d, %d-way, %d-shot, %d-query, resize:%d' % (
         mode, batchsz, n_way, k_shot, k_query, resize))
 
+        self.path = Path(root)/"images"  # image path
         if mode == 'train':
-            self.transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
+            transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
                                                  transforms.Resize((self.resize, self.resize)),
                                                  # transforms.RandomHorizontalFlip(),
                                                  # transforms.RandomRotation(5),
                                                  transforms.ToTensor(),
                                                  transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
                                                  ])
+            self.transform = cached_transformer(self.path, Path(root)/"cache", transform)
         else:
-            self.transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
+            transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
                                                  transforms.Resize((self.resize, self.resize)),
                                                  transforms.ToTensor(),
                                                  transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
                                                  ])
+            self.transform = cached_transformer(self.path, Path(root)/"cache", transform)
 
-        self.path = os.path.join(root, 'images')  # image path
         csvdata = self.loadCSV(os.path.join(root, mode + '.csv'))  # csv path
         self.data = []
         self.img2label = {}
@@ -130,23 +168,19 @@ class MiniImagenet(Dataset):
         :param index:
         :return:
         """
-        # [setsz, 3, resize, resize]
+        # support_x shape = [setsz, 3, resize, resize]
         support_x = torch.FloatTensor(self.setsz, 3, self.resize, self.resize)
-        # [setsz]
-        support_y = np.zeros((self.setsz), dtype=np.int)
-        # [querysz, 3, resize, resize]
+        # support_y shape = [setsz]
+        # query_x shape = [querysz, 3, resize, resize]
         query_x = torch.FloatTensor(self.querysz, 3, self.resize, self.resize)
-        # [querysz]
-        query_y = np.zeros((self.querysz), dtype=np.int)
+        # query_y shape = [querysz]
 
-        flatten_support_x = [os.path.join(self.path, item)
-                             for sublist in self.support_x_batch[index] for item in sublist]
+        flatten_support_x = [item for sublist in self.support_x_batch[index] for item in sublist]
         support_y = np.array(
             [self.img2label[item[:9]]  # filename:n0153282900000005.jpg, the first 9 characters treated as label
              for sublist in self.support_x_batch[index] for item in sublist]).astype(np.int32)
 
-        flatten_query_x = [os.path.join(self.path, item)
-                           for sublist in self.query_x_batch[index] for item in sublist]
+        flatten_query_x = [item for sublist in self.query_x_batch[index] for item in sublist]
         query_y = np.array([self.img2label[item[:9]]
                             for sublist in self.query_x_batch[index] for item in sublist]).astype(np.int32)
 
@@ -166,10 +200,10 @@ class MiniImagenet(Dataset):
         # print('relative:', support_y_relative, query_y_relative)
 
         for i, path in enumerate(flatten_support_x):
-            support_x[i] = self.transform(path)
+            support_x[i] = torch.FloatTensor(self.transform(path))
 
         for i, path in enumerate(flatten_query_x):
-            query_x[i] = self.transform(path)
+            query_x[i] = torch.FloatTensor(self.transform(path))
         # print(support_set_y)
         # return support_x, torch.LongTensor(support_y), query_x, torch.LongTensor(query_y)
 

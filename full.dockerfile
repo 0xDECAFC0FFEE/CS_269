@@ -3,7 +3,7 @@ FROM pytorch/pytorch
 # update system packages
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get -y upgrade
-RUN apt-get -y install build-essential wget tmux nmap vim htop
+RUN apt-get -y install build-essential wget tmux nmap vim htop unzip
 
 # install zsh
 RUN sh -c "$(wget -O- https://raw.githubusercontent.com/deluan/zsh-in-docker/master/zsh-in-docker.sh)"
@@ -19,7 +19,6 @@ EXPOSE 7722
 # install lucas's env
 ADD https://api.github.com/repos/0xDECAFC0FFEE/.setup/git/refs/ version.json
 RUN git clone https://github.com/0xDECAFC0FFEE/.setup.git /root/.setup
-RUN conda install --file /root/.setup/requirements.txt
 RUN python3 /root/.setup/setup.py --disable-ssh
 
 # installing notebook tqdm for jupyter

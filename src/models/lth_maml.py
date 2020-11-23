@@ -11,6 +11,7 @@ from ..utils import Logger
 from .mask_ops import build_mask, apply_mask, update_mask
 from .lth import detect_early_bird
 from src.models.meta import Meta
+from pathlib import Path
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -39,13 +40,15 @@ def run(dataset, lottery_ticket_params):
     val_accs_per_prune_iter = []
     test_accs_per_prune_iter = []
 
-    logger = Logger("", "logs")
+    project_dir = Path(lottery_ticket_params["project_dir"])
+    logger = Logger(project_dir, project_dir/"logs")
     logger.snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params_JSON=lottery_ticket_params,
         initial_weights=initial_weights,
         masks=masks,
         model_state_dicts=model_state_dicts,
+        prune_iterations_TXT="0"
     )
     writer = SummaryWriter(f'tensorboard/{lottery_ticket_params["expr_id"]}')
 
@@ -82,6 +85,7 @@ def run(dataset, lottery_ticket_params):
             expr_params_JSON=lottery_ticket_params,
             test_accs_TXT="\n".join([str(accs) for accs in test_accs_per_prune_iter]),
             val_accs_TXT="\n".join([str(accs) for accs in val_accs_per_prune_iter]),
+            prune_iterations_TXT=str(prune_iter)
         )
 
         # pruning weights
@@ -111,7 +115,7 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
     val_accs = []
     best_val_acc, best_model_state = 0, None
 
-    for epoch in list(range(expr_params["training_iterations"]//10000)):
+    for epoch in list(range(expr_params["training_iterations"])):
         # fetch meta_batchsz num of episode each time
         print(f"train epoch {epoch}")
         # pbar = tqdm(total=len(train_data), leave=False) # not wrapping the train_data in tqdm as it causes a threading error
@@ -120,12 +124,12 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
             x_spt, y_spt, x_qry, y_qry = x_spt.to(device), y_spt.to(device), x_qry.to(device), y_qry.to(device)
 
             accs = model(mask, x_spt, y_spt, x_qry, y_qry)
-            writer.add_scalars(f"prune {prune_iter} train passes", {f"epoch {epoch}": max(accs)}, step)
+            # writer.add_scalars(f"prune {prune_iter} train passes", {f"epoch {epoch}": max(accs)}, step)
 
             if step % 30 == 0:
                 print(f" step: {step} \ttraining acc: {accs}")
 
-            if step % 300 == 0:  # evaluation
+            if step % 500 == 0:  # evaluation
                 print("validating model...")
                 
                 accs = test(model, mask, val_data, expr_params)

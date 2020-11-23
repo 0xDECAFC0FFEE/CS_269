@@ -1,2 +1,5 @@
 logs
 data
+tensorboard
+docs
+.git

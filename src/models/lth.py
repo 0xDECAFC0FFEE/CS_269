@@ -10,6 +10,7 @@ import copy
 from ..utils import Logger
 from .mask_ops import build_mask, apply_mask, update_mask
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from pathlib import Path
 
 def run(dataset, lottery_ticket_params):
     """
@@ -33,7 +34,8 @@ def run(dataset, lottery_ticket_params):
     # setting up logging
     masks = []
 
-    Logger(".", "logs").save_snapshot(
+    project_dir = Path(lottery_ticket_params["project_dir"])
+    Logger(project_dir, project_dir/"logs").save_snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params=lottery_ticket_params,
         initial_weights=initial_weights,
@@ -73,7 +75,8 @@ def run(dataset, lottery_ticket_params):
                 break
 
     writer.close()
-    Logger("/workspace", "/workspace/logs").save_snapshot(
+    project_dir = Path(lottery_ticket_params["project_dir"])
+    Logger(project_dir, project_dir/"logs").save_snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params=lottery_ticket_params,
         initial_weights=initial_weights,

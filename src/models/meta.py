@@ -15,6 +15,14 @@ from collections import OrderedDict
 
 writer = SummaryWriter("tensorboard/graphs")
 
+def update_weights(named_parameters, loss, lr):
+    names, params = list(zip(*named_parameters))
+    grad = torch.autograd.grad(loss, params)
+
+    fast_weights = [p - lr * g for p, g in zip(params, grad)]
+    fast_weights = OrderedDict([(n, w) for n, w in zip(names, fast_weights)])
+    return fast_weights
+
 class Meta(nn.Module):
     """
     Meta Learner
@@ -40,32 +48,6 @@ class Meta(nn.Module):
         self.meta_optim = optim.Adam(self.net.parameters(), lr=self.meta_lr)
 
 
-
-
-    def clip_grad_by_norm_(self, grad, max_norm):
-        """
-        in-place gradient clipping.
-        :param grad: list of gradients
-        :param max_norm: maximum norm allowable
-        :return:
-        """
-
-        total_norm = 0
-        counter = 0
-        for g in grad:
-            param_norm = g.data.norm(2)
-            total_norm += param_norm.item() ** 2
-            counter += 1
-        total_norm = total_norm ** (1. / 2)
-
-        clip_coef = max_norm / (total_norm + 1e-6)
-        if clip_coef < 1:
-            for g in grad:
-                g.data.mul_(clip_coef)
-
-        return total_norm/counter
-
-
     def forward(self, mask, x_spt, y_spt, x_qry, y_qry):
         """
 
@@ -87,16 +69,8 @@ class Meta(nn.Module):
             # 1. run the i-th task and compute loss for k=0
             logits = self.net(mask, x_spt[i], vars=None, bn_training=True)
             loss = F.cross_entropy(logits, y_spt[i])
-            names, params = list(zip(*self.net.named_parameters()))
-            grad = torch.autograd.grad(loss, params)
 
-            # 3. theta_pi = theta_pi - train_lr * grad
-            # fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
-            fast_weights = [p - self.update_lr * g for p, g in zip(params, grad)]
-            fast_weights = OrderedDict([(n, w) for n, w in zip(names, fast_weights)])
-            # print(f"meta.net.named_parameters names shapes {[(n, w.shape) for n, w in self.net.named_parameters()]}")
-            # print(f"meta.net.named_buffers names shapes {[(n, w.shape) for n, w in self.net.named_buffers()]}")
-            # print(f"fast_weights names shapes {[(n, w.shape) for n, w in fast_weights.items()]}")
+            fast_weights = update_weights(self.net.named_parameters(), loss, self.update_lr)
 
             # this is the loss and accuracy before first update
             with torch.no_grad():
@@ -137,15 +111,7 @@ class Meta(nn.Module):
                 # writer.flush()
                 # writer.close()
 
-
-
-                names, params = list(zip(*fast_weights.items()))
-                grad = torch.autograd.grad(loss, params)
-
-                # 3. theta_pi = theta_pi - train_lr * grad
-                # fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
-                fast_weights = [p - self.update_lr * g for p, g in zip(params, grad)]
-                fast_weights = OrderedDict([(n, w) for n, w in zip(names, fast_weights)])
+                fast_weights = update_weights(fast_weights.items(), loss, self.update_lr)
 
                 logits_q = self.net(mask, x_qry[i], fast_weights, bn_training=True)
                 # loss_q will be overwritten and just keep the loss_q on last update step.
@@ -200,13 +166,10 @@ class Meta(nn.Module):
         # 1. run the i-th task and compute loss for k=0
         logits = net(mask, x_spt)
         loss = F.cross_entropy(logits, y_spt)
-        names, params = list(zip(*net.named_parameters()))
-        grad = torch.autograd.grad(loss, params)
-
+        
         # 3. theta_pi = theta_pi - train_lr * grad
         # fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
-        fast_weights = [p - self.update_lr * g for p, g in zip(params, grad)]
-        fast_weights = OrderedDict([(n, w) for n, w in zip(names, fast_weights)])
+        fast_weights = update_weights(net.named_parameters(), loss, self.update_lr)
 
         # this is the loss and accuracy before first update
         with torch.no_grad():
@@ -235,13 +198,7 @@ class Meta(nn.Module):
             logits = net(mask, x_spt, fast_weights, bn_training=True)
             loss = F.cross_entropy(logits, y_spt)
             # 2. compute grad on theta_pi
-            names, params = list(zip(*fast_weights.items()))
-            grad = torch.autograd.grad(loss, params)
-
-            # 3. theta_pi = theta_pi - train_lr * grad
-            # fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
-            fast_weights = [p - self.update_lr * g for p, g in zip(params, grad)]
-            fast_weights = OrderedDict([(n, w) for n, w in zip(names, fast_weights)])
+            fast_weights = update_weights(fast_weights.items(), loss, self.update_lr)
 
             logits_q = net(mask, x_qry, fast_weights, bn_training=True)
             # loss_q will be overwritten and just keep the loss_q on last update step.

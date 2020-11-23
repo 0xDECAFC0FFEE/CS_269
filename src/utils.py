@@ -13,6 +13,8 @@ import pickle
 import json
 import torch
 import numpy as np
+import pickle
+from numpy.lib.format import open_memmap
 
 class TopModelSaver():
     def __init__(self, location, config):
@@ -87,18 +89,19 @@ def flatten(iterable, max_depth=np.inf):
     return recursive_step(iterable, max_depth)
 
 
-def new_expr_id(prepend=""):
+def new_expr_id(*args):
     """
     returns new experiemnt id for process.
     """
     chars = "abcdefghijklmnopqrstuvwxyz"
     nums = "1234567890"
-
     nonce = random.choices(chars+chars.upper()+nums, k=5)
     nonce = "".join(nonce)
+
     time = datetime.datetime.now().strftime("%Y-%m-%d|%H:%M:%S")
 
-    return f"expr|{time}|{nonce}|{prepend}"
+    return "|".join(["expr", time, nonce, *args])
+
 
 def weight_init(m):
     '''
@@ -194,7 +197,7 @@ class Logger:
         - arguments that end in "_TXT" are saved as text files
         - by default, arguments are saved as pickle files
 
-        logger = Logger("/workspace", "/workspace/logs")
+        logger = Logger("/project_dir", "/project_dir/logs")
         logger.save_snapshot(
             "experiment 5", 
             training_params_JSON=training_params,
@@ -242,7 +245,7 @@ class Logger:
         - by default, arguments are saved as pickle files
         - will save argument values in files based off of the parameter names
 
-        logger = Logger("/workspace", "/workspace/logs")
+        logger = Logger("/project_dir", "/project_dir/logs")
         logger.save_snapshot("experiment 5")
         logger.update_snapshot(
             "experiment 5", 
@@ -274,13 +277,13 @@ class Logger:
 
     def snapshot(self, expr_id, **kwargs):
         """
-        snapshots a directory by saving workspace directory and saving any kwargs
+        snapshots a directory by saving project_dir directory and saving any kwargs
 
-        first call with a specific expr_id will copy the workspace directory in that log directory
+        first call with a specific expr_id will copy the project_dir directory in that log directory
         subsequent calls will only update the log directory with the kwarg values
         see update_snapshot for kwargs naming scheme
 
-        logger = Logger("/workspace", "/workspace/logs")
+        logger = Logger("/project_dir", "/project_dir/logs")
         logger.snapshot(
             "experiment 5", 
             training_params_JSON=training_params,
@@ -295,8 +298,39 @@ class Logger:
         else:
             self.update_snapshot(expr_id, **kwargs)
 
-
 def set_seeds(seeds):
     torch.manual_seed(seeds.get("torch", 222))
     torch.cuda.manual_seed_all(seeds.get("cuda", 222))
     np.random.seed(seeds.get("numpy", 222))
+
+class fs_greedy_load:
+    """
+    greedily loads everything in lst_arrays and stores it as a memory mapped numpy file
+    on second run, loads numpy file instead to save ram
+    """
+    def __init__(self, path, lst_array=None):
+        try:
+            self.array = np.load(path, mmap_mode="r")
+        except FileNotFoundError:
+            ex_val = next(iter(lst_array))
+            shape, dtype = (len(lst_array), *ex_val.shape), str(ex_val.dtype)
+
+            self.array = open_memmap(path, mode='w+', dtype=dtype, shape=shape)
+            for i, val in enumerate(lst_array):
+                self.array[i] = val
+
+    def __getitem__(self, index):
+        return self.array[index]
+
+    def __len__(self):
+        return len(self.array)
+
+if __name__ == "__main__":
+    a = fs_greedy_load("array.npy", [np.arange(1000).reshape(2, 5) for _ in range(100000)])
+    print(len(a))
+    print(a[0])
+    del a
+    a = fs_greedy_load("array.npy")
+    print(len(a))
+    print(a[0])
+    
