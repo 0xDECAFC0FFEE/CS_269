@@ -25,7 +25,7 @@ localhost:6006
 Hoffman2 does not support docker so you will need to manually set up the conda environment
 
 ### Setting up the conda environment
-conda create -n env_name 
+conda create -n env_name
 conda config --append channels conda-forge
 conda install jupyterlab -y
 conda install -c conda-forge ipywidgets -y
