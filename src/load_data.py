@@ -37,7 +37,7 @@ def mnist(args):
     return train, val, test
 
 def mini_imagenet(args, redownload=False):
-    dataset_path = Path("/workspace/data/miniimagenet/")
+    dataset_path = Path("data/miniimagenet/")
     if redownload:
         print(f"deleting dataset from {dataset_path}")
         shutil.rmtree(dataset_path)

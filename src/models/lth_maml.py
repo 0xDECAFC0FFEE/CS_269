@@ -39,7 +39,7 @@ def run(dataset, lottery_ticket_params):
     val_accs_per_prune_iter = []
     test_accs_per_prune_iter = []
 
-    logger = Logger("/workspace", "/workspace/logs")
+    logger = Logger("", "logs")
     logger.snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params_JSON=lottery_ticket_params,

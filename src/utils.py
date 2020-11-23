@@ -215,7 +215,7 @@ class Logger:
             raise Exception(f"log folder {log_folder} already exists")
         
         os.makedirs(log_folder)
-        files_to_log = subprocess.check_output(["git", "ls-files", "--full-name", self.project_folder]).decode().split("\n")
+        files_to_log = subprocess.check_output(["git", "ls-files"]).decode().split("\n")
         
         for path in files_to_log:
             if len(path.strip()) == 0: # stripping newlines

@@ -33,7 +33,7 @@ def run(dataset, lottery_ticket_params):
     # setting up logging
     masks = []
 
-    Logger("/workspace", "logs").save_snapshot(
+    Logger(".", "logs").save_snapshot(
         expr_id=lottery_ticket_params["expr_id"], 
         expr_params=lottery_ticket_params,
         initial_weights=initial_weights,
