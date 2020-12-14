@@ -324,6 +324,12 @@ class fs_greedy_load:
 
     def __len__(self):
         return len(self.array)
+    
+def sparsity(model, threshold=0.001):
+    state_dict = model
+    num_params = sum([np.prod(weights.shape) for n, weights in state_dict.items() ] )
+    zeros = sum([torch.sum(torch.abs(weights) < threshold).cpu() for n, weights in state_dict.items() ] )
+    return zeros / num_params
 
 if __name__ == "__main__":
     a = fs_greedy_load("array.npy", [np.arange(1000).reshape(2, 5) for _ in range(100000)])

@@ -3,6 +3,7 @@ from    torch import nn
 from    torch.nn import functional as F
 import  numpy as np
 from collections import OrderedDict
+from src.models.mask_ops import apply_mask, apply_mask_state_dict
 
 
 class Learner(nn.Module):
@@ -15,7 +16,7 @@ class Learner(nn.Module):
         :param imgc: 1 or 3
         :param imgsz:  28 or 84
         """
-        super().__init__()
+        super(Learner, self).__init__()
 
 
         self.config = config
@@ -121,7 +122,7 @@ class Learner(nn.Module):
 
 
 
-    def forward(self, x, vars=None, bn_training=True):
+    def forward(self, mask, x, vars=None, bn_training=True):
         """
         This function can be called by finetunning, however, in finetunning, we dont wish to update
         running_mean/running_var. Thought weights/bias of bn is updated, it has been separated by fast_weights.
@@ -135,7 +136,10 @@ class Learner(nn.Module):
 
         if vars == None:
             # vars = self.vars
+            apply_mask(self, mask)
             vars = OrderedDict(self.named_parameters())
+        else:
+            vars = apply_mask_state_dict(vars, mask)
 
         bn_vars = OrderedDict(self.named_buffers())
 
