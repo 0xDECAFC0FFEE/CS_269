@@ -361,12 +361,22 @@ class fs_greedy_load:
         return self.array_chunks[chunk_index][array_index]
 
     def __len__(self):
+<<<<<<< HEAD
         return sum([len(chunk) for chunk in self.array_chunks])
 
 
 def DummySummaryWriter(*args, **kwargs):
     from unittest.mock import Mock
     return Mock()
+=======
+        return len(self.array)
+    
+def sparsity(model, threshold=0.001):
+    state_dict = model
+    num_params = sum([np.prod(weights.shape) for n, weights in state_dict.items() ] )
+    zeros = sum([torch.sum(torch.abs(weights) < threshold).cpu() for n, weights in state_dict.items() ] )
+    return zeros / num_params
+>>>>>>> 250d7f0f2855192d07b4c9463a3ecbf10d715b99
 
 if __name__ == "__main__":
     a = fs_greedy_load("fs_greedy_load_test", [np.arange(1000, dtype=np.float32).reshape(5, 2, 5, 20) for _ in range(1000000)])

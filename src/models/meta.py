@@ -6,7 +6,7 @@ from    torch.utils.data import TensorDataset, DataLoader
 from    torch import optim
 import  numpy as np
 
-from    src.models.learner import Learner
+from    src.models.maml_learner import Learner
 from    copy import deepcopy
 from .mask_ops import apply_mask
 from collections import OrderedDict

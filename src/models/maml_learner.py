@@ -3,7 +3,6 @@ from    torch import nn
 from    torch.nn import functional as F
 import  numpy as np
 from collections import OrderedDict
-from src.models.mask_ops import apply_mask, apply_mask_state_dict
 
 class Learner(nn.Module):
     """
@@ -14,7 +13,7 @@ class Learner(nn.Module):
         :param config: network config file, type:list of (string, list)
         :param imgsz:  28 or 84
         """
-        super(Learner, self).__init__()
+        super().__init__()
 
 
         self.config = config
@@ -65,10 +64,7 @@ class Learner(nn.Module):
 
         if vars == None:
             # vars = self.vars
-            apply_mask(self, mask)
             vars = OrderedDict(self.named_parameters())
-        else:
-            vars = apply_mask_state_dict(vars, mask)
 
         bn_vars = OrderedDict(self.named_buffers())
 
