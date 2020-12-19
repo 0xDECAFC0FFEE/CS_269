@@ -30,8 +30,8 @@ RUN python3 /root/.setup/setup.py --disable-ssh
 
 # installing project requirements.txt
 RUN conda config --append channels conda-forge
-COPY requirements_full.txt /root/requirements.txt
-RUN conda install --file /root/requirements.txt
+RUN conda install pytorch torchvision cpuonly -c pytorch
+RUN conda install numpy ninja cffi typing_extensions future dataclasses tqdm
 RUN jupyter lab build
 RUN conda install expect gdown snakeviz
 

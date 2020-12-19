@@ -4,8 +4,10 @@ import torch.nn  as nn
 import tqdm
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except:
+    from unittest.mock import Mock as SummaryWriter
 import copy
 from ..utils import Logger
 from .mask_ops import build_mask, apply_mask, update_mask
@@ -40,7 +42,7 @@ def run(dataset, lottery_ticket_params):
         expr_params=lottery_ticket_params,
         initial_weights=initial_weights,
     )
-    writer = SummaryWriter(f'tensorboard/{lottery_ticket_params["expr_id"]}')
+    writer = SummaryWriter(log_dir=f'tensorboard/{lottery_ticket_params["expr_id"]}')
 
     for prune_iter in range(prune_strategy["iterations"]):
         print(f"starting prune iteration {prune_iter}")

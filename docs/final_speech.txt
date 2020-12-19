@@ -1,0 +1,51 @@
+
+Hi everybody. We're Lucas and Daniel and we're presenting our work on pruning meta learning algorithms
+
+=> Introduction
+
+As a reminder from the midterm, some limitations on the deployment of machine learning systems on edge devices are as follows: Firstly, edge devices are frequently memory constrained. Large models are simply unable to be trained in these environments if they don't fit in the device's memory. Secondly, training models locally requires large amounts of energy and compute time. This could be detrimental to training models on battery powered edge devices such as phones or rural devices with intermittent power. Thirdly, some edge devices collect massive amounts of sensor data but are unable to upload it to cloud services due to privacy or cellular bandwidth constraints. Ideally, models used in these circumstances are trained locally instead of on a more powerful cloud service. This is common in biotech applications and smart agriculture. 
+
+=> Meta Learning
+
+In order to handle these challenges unique to edge computing, a possible solution comes in the form of meta learning. As a reminder, Meta learning is a branch of machine learning concerned with training meta models to finetune to new tasks quickly by training on other related tasks first. These approaches are well suited to the challenges common amongst edge devices as they allow powerful servers to train meta models that generalize to new tasks quickly. These models could then be deployed to a large fleet of small edge devices to fit to the local tasks. This alleviates many of the earlier problems. Meta learning allows training on edge devices which circumvents sending any information to remote servers. Fine tuning the trained meta model locally for each task specific model will be significantly faster and cost far less energy than training a new model for each new task. Meta models have the added benefit of leveraging features learned from different but related tasks to perform on tasks for which there exists few data points.
+
+Amongst the many meta learning algorithms, we are currently focused on an approach known as Model Agnostic Meta Learning for Fast Adaptation of Deep Networks, or MAML. As implied by its name, it's model agnostic and its designed to be fast to finetune. 
+
+We intend to couple MAML with a recent development in model pruning called the Lottery Ticket Hypothesis. It proposes a pruning algorithm that consistently uncovers sub-networks of any fully connected neural network with the same or greater test accuracy while retaining only a small fraction of the weights. These subnetworks are discovered through an iterative train - prune - reinitialization process. They empirically show that networks generally contain a higher scoring sparse subnetwork and that later iterations of this training process converge in very few training epochs. 
+
+Pruning networks with this process generally lead to a specific graph. The solid lines show that pruning the network results in higher accuracies initially as small weights are removed but when it becomes too sparse, the scores drop rapidly.
+
+Applying their sparsification algorithm to MAML has several benefits to the earlier challenges common to ml in edge devices. Firstly, the sparsity induced through the pruning algorithm could result in improvements to meta model finetuning time. Not only are there fewer operations to do but models sparsified through the process have also been shown to converge in far fewer iterations than the original dense network. Secondly, these pruned models have been shown to generalize better and faster than their initial unpruned dense networks. This could increase the test accuracy and finetuning speed of our meta models. Lastly, the lottery ticket pruning process is entirely model agnostic. This synergizes well with MAML as both processes work for all networks with loss functions. 
+
+========================
+
+Daniel's stuff
+
+=> Related work: Model Agnostic Meta Learning
+
+=> Related work: Model Agnostic Meta Learning
+
+=> Related work: Model Agnostic Meta Learning
+
+=> Related Work: Sparse MAML
+
+=> Proposed Method
+
+=> Experimental Setup
+
+========================
+
+
+
+
+=> Results 1
+
+Our current results are fairly promising. It's kind of hard to see with all the lines but pruning maml has the same rise then fall pattern mentioned earlier when explaining the lottery ticket hypothesis. Prune iterations 1 to 7 generally increase network scores but as weights are further pruned, the scores drop.
+
+Here we can see the test accuracies plotted against the training time. There doesn't seem to be much of a relationship between training longer and the finetuning accuracy. 
+
+The results here are a bit noisy as we only finished one run but this graph shows the maximum finetuning test accuracy of each intermediate step of pruning the model. Similarly to the first graph, the results rise then fall. According to this graph, it doesn't make sense to sparsify our model on this dataset past 61% - the scores drop rapidly from there. Unfortunately, this doesn't result in a smaller memory footprint due to the overhead in pytorch's sparse matrix implementation. Of course, we could forcibly increase the sparsity by adding more weights but, without more work, leveraging the sparsity to decrease memory overhead doesn't make sense. 
+
+We were able to finetune the model on our raspberry pi with no compromises. This graph plots the prune iterations against the epoch with the maximum testing accuracy. Each finetuning epoch took roughly 7 minutes. To emphasize how much slower the pi is than my desktop, each epoch takes 10 to 13 seconds to run on my desktop, depending on if i'm playing factorio at the same time. Theoretically, if we were to implement early stopping, the meta model would spend up to 5 times less time finetuning as it could trigger early stopping 2 epochs in. That's a drop from an hour to a bathroom break. 
+
+While our scores increased with pruning, we intend to run more tests in the future. Specifically, one, we hope to smooth out the noise in our experiments with more runs. Our current results bounce all over the place. This could also be due to pruning 10% on each pruning iteration being too high. Second, our unpruned maml model, which should be identical to the paper's model, is still scoring about 1% lower than the original paper. This could be fixed with more hyperparameter tuning and compute time. Third, not implementing early stopping was a bit of an oversight and could impact our max scores as validation accuracy can bounce around. Fourth, the testing scores are occasionally higher than the validation scores which is a bit whack and Lastly, it could be fun to try running our algorithm on larger models. This might not be feasible as both maml and lth have well known issues with large models due to the obscene training times.

@@ -1,21 +1,12 @@
 import  torch, os
 import  numpy as np
 from    MiniImagenet import MiniImagenet
-import  scipy.stats
 from    torch.utils.data import DataLoader
 from    torch.optim import lr_scheduler
 import  random, sys, pickle
 import  argparse
 
 from meta import Meta
-
-
-def mean_confidence_interval(accs, confidence=0.95):
-    n = accs.shape[0]
-    m, se = np.mean(accs), scipy.stats.sem(accs)
-    h = se * scipy.stats.t._ppf((1 + confidence) / 2, n - 1)
-    return m, h
-
 
 def main():
 

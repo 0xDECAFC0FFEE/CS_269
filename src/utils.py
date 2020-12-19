@@ -15,6 +15,9 @@ import torch
 import numpy as np
 import pickle
 from numpy.lib.format import open_memmap
+from pathlib import Path
+from tqdm import tqdm
+import csv
 
 class TopModelSaver():
     def __init__(self, location, config):
@@ -95,7 +98,7 @@ def new_expr_id(*args):
     """
     chars = "abcdefghijklmnopqrstuvwxyz"
     nums = "1234567890"
-    nonce = random.choices(chars+chars.upper()+nums, k=5)
+    nonce = random.choices(chars+nums, k=5)
     nonce = "".join(nonce)
 
     time = datetime.datetime.now().strftime("%Y-%m-%d|%H:%M:%S")
@@ -262,19 +265,29 @@ class Logger:
         for name, value in kwargs.items():
             json_flag = "_JSON"
             txt_flag = "_TXT"
+            csv_flag = "_CSV"
             
-            if name[-len(json_flag):] == json_flag:
-                name = name[:-len(json_flag)]
-                with open(log_folder/f"{name}.json", "w+") as handle:
-                    json.dump(value, handle)
-            elif name[-len(txt_flag):] == txt_flag:
-                name = name[:-len(txt_flag)]
-                with open(log_folder/f"{name}.txt", "w+") as handle:
-                    handle.write(value)
-            else:
-                with open(log_folder/f"{name}.pkl", "wb+") as handle:
-                    pickle.dump(value, handle)
-
+            try:
+                if name[-len(json_flag):] == json_flag:
+                    name = name[:-len(json_flag)]
+                    with open(log_folder/f"{name}.json", "w+") as handle:
+                        json.dump(value, handle)
+                elif name[-len(txt_flag):] == txt_flag:
+                    name = name[:-len(txt_flag)]
+                    with open(log_folder/f"{name}.txt", "w+") as handle:
+                        handle.write(value)
+                elif name[-len(csv_flag):] == csv_flag:
+                    name = name[:-len(csv_flag)]
+                    with open(log_folder/f"{name}.csv", "w+") as handle:
+                        writer = csv.DictWriter(handle, fieldnames=value[0].keys())
+                        writer.writeheader()
+                        writer.writerows(value)
+                else:
+                    with open(log_folder/f"{name}.pkl", "wb+") as handle:
+                        pickle.dump(value, handle)
+            except TypeError as e:
+                print(f"triggered on key {name}")
+                raise TypeError(e)
     def snapshot(self, expr_id, **kwargs):
         """
         snapshots a directory by saving project_dir directory and saving any kwargs
@@ -298,39 +311,69 @@ class Logger:
         else:
             self.update_snapshot(expr_id, **kwargs)
 
-def set_seeds(seeds):
-    torch.manual_seed(seeds.get("torch", 222))
-    torch.cuda.manual_seed_all(seeds.get("cuda", 222))
-    np.random.seed(seeds.get("numpy", 222))
+def set_seeds(seed, cudnn_enabled=True):
+    if seed != None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        # torch.cuda.manual_seed(seed)
+        # torch.cuda.manual_seed_all(seed)
+        
+        if not cudnn_enabled:
+            torch.backends.cudnn.enabled = False
+        else:
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
 
 class fs_greedy_load:
     """
     greedily loads everything in lst_arrays and stores it as a memory mapped numpy file
     on second run, loads numpy file instead to save ram
+
+    zarr is slow as shit wtf
     """
     def __init__(self, path, lst_array=None):
         try:
-            self.array = np.load(path, mmap_mode="r")
+            file_chunks = sorted(list(path.iterdir()))
+            self.array_chunks = [np.load(file_chunk, mmap_mode="r+") for file_chunk in file_chunks]
+            self.chunk_size = len(self.array_chunks[0])
         except FileNotFoundError:
-            ex_val = next(iter(lst_array))
-            shape, dtype = (len(lst_array), *ex_val.shape), str(ex_val.dtype)
+            print("rebuilding transformed dataset cache")
+            shape, dtype = lst_array.shape, str(lst_array.dtype)
 
-            self.array = open_memmap(path, mode='w+', dtype=dtype, shape=shape)
-            for i, val in enumerate(lst_array):
-                self.array[i] = val
+            arm32_max_filesize = 2*10**9
+            total_bytes = lst_array.dtype.itemsize * np.product(shape)
+            num_chunks = int(total_bytes/arm32_max_filesize)+1
+            self.chunk_size = int(len(lst_array)/num_chunks)
+
+            os.makedirs(path)
+            self.array_chunks = []
+            for chunk_index, lst_chunk in enumerate(np.array_split(lst_array, num_chunks)):
+                chunk_array = open_memmap(path/f"chunk_{chunk_index}.npy", mode='w+', dtype=dtype, shape=lst_chunk.shape)
+                self.array_chunks.append(chunk_array)
+                
+                for i, val in enumerate(lst_chunk):
+                    chunk_array[i] = val
 
     def __getitem__(self, index):
-        return self.array[index]
+        chunk_index = index // self.chunk_size
+        array_index = index % self.chunk_size
+        return self.array_chunks[chunk_index][array_index]
 
     def __len__(self):
-        return len(self.array)
+        return sum([len(chunk) for chunk in self.array_chunks])
+
+
+def DummySummaryWriter(*args, **kwargs):
+    from unittest.mock import Mock
+    return Mock()
 
 if __name__ == "__main__":
-    a = fs_greedy_load("array.npy", [np.arange(1000).reshape(2, 5) for _ in range(100000)])
+    a = fs_greedy_load("fs_greedy_load_test", [np.arange(1000, dtype=np.float32).reshape(5, 2, 5, 20) for _ in range(1000000)])
     print(len(a))
     print(a[0])
     del a
-    a = fs_greedy_load("array.npy")
+    a = fs_greedy_load("fs_greedy_load_test")
     print(len(a))
     print(a[0])
     

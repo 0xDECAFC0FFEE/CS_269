@@ -1,0 +1,5 @@
+currently executing:
+    does decreasing prune rate increase scores
+
+next up:
+    try repeat 47% with cudnn disabled

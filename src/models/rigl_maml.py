@@ -5,8 +5,6 @@ from torch import optim
 from tqdm import tqdm
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
 import copy
 from ..utils import Logger
 from .mask_ops import build_mask, apply_mask, update_mask

@@ -64,31 +64,34 @@ def download_raw(dataset_path, saved_image_zip_file=None):
 
     os.system(f"unzip {dataset_path/'raw.zip'} -d {dataset_path}")
 
-    os.system(f"git clone https://github.com/twitter/meta-learning-lstm.git {dataset_path/'meta-learning-lstm'}")
-    os.system(f"mv {dataset_path/'meta-learning-lstm/data/miniImagenet/*'} {dataset_path}")
+    for filename in ["train.csv", "val.csv", "test.csv"]:
+        os.system(f"wget https://raw.githubusercontent.com/twitter/meta-learning-lstm/master/data/miniImagenet/{filename} -O {dataset_path/filename}")
     os.system(f"rm -rf {dataset_path/'meta-learning-lstm'}")
     os.system(f"rm {dataset_path/'raw.zip'}")
 
-def build_meta_learning_tasks(dataset_path, args):
-    train = MiniImagenet(dataset_path, mode='train', n_way=args["n_way"], k_shot=args["k_spt"],
-                        k_query=args["k_qry"],
-                        batchsz=10000, resize=args["imgsz"])
-    
-    val = MiniImagenet(dataset_path, mode='val', n_way=args["n_way"], k_shot=args["k_spt"],
-                             k_query=args["k_qry"],
-                             batchsz=100, resize=args["imgsz"])
+def build_meta_learning_tasks(dataset_path, args, disable_training=False):
+    if not disable_training:
+        train = MiniImagenet(dataset_path, mode='train', n_way=args["n_way"], k_shot=args["k_spt"],
+                            k_query=args["k_qry"],
+                            batchsz=args.get("train_bs", 10000), resize=args["imgsz"])
+        train = torch.utils.data.DataLoader(train, args["task_num"], shuffle=False, num_workers=0, pin_memory=True)
+
+        val = MiniImagenet(dataset_path, mode='val', n_way=args["n_way"], k_shot=args["k_spt"],
+                                k_query=args["k_qry"],
+                                batchsz=args.get("test_bs", 100), resize=args["imgsz"])
+        val = torch.utils.data.DataLoader(val, 1, shuffle=False, num_workers=0, pin_memory=True)
+
+    else:
+        train, val = None, None
 
     test = MiniImagenet(dataset_path, mode='test', n_way=args["n_way"], k_shot=args["k_spt"],
                              k_query=args["k_qry"],
-                             batchsz=100, resize=args["imgsz"])
-
-    train = torch.utils.data.DataLoader(train, args["task_num"], shuffle=False, num_workers=0, pin_memory=True)
-    val = torch.utils.data.DataLoader(val, 1, shuffle=False, num_workers=0, pin_memory=True)
+                             batchsz=args.get("test_bs", 100), resize=args["imgsz"])
     test = torch.utils.data.DataLoader(test, 1, shuffle=False, num_workers=0, pin_memory=True)
 
     return train, val, test
 
-def mini_imagenet(args, redownload=False, memory_constrained=False):
+def mini_imagenet(args, redownload=False, disable_training=False):
     dataset_path = Path(args.get("dataset_location", "data/miniimagenet/"))
     cache = dataset_path/"cache"
     if redownload:
@@ -98,4 +101,16 @@ def mini_imagenet(args, redownload=False, memory_constrained=False):
     if not dataset_path.exists():
         download_raw(dataset_path)
 
-    return build_meta_learning_tasks(dataset_path, args)
+    return build_meta_learning_tasks(dataset_path, args, disable_training=disable_training)
+
+def dataset(args, **kwargs):
+    dataset_name = args["dataset_name"]
+    
+    if dataset_name == "cifar10":
+        return cifar10(args, **kwargs)
+    elif dataset_name == "mnist":
+        return mnist(args, **kwargs)
+    elif dataset_name == "mini_imagenet":
+        return mini_imagenet(args, **kwargs)
+    else:
+        raise NotImplementedError(f"dataset {dataset_name} not implemented")

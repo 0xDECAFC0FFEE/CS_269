@@ -15,25 +15,23 @@ import re
 import shutil
 
 class cached_transformer:
-    def __init__(self, images_source_path, cache, transform, reload_cache=False):
+    def __init__(self, images_source_path, image_filenames, cache, transform, reload_cache=False):
         if reload_cache:
             shutil.rmtree(cache)
         try:
             with open(cache/"image_path_to_id.pkl", "rb") as handle:
                 self.map = pickle.load(handle)
 
-            self.data = fs_greedy_load(cache/"data.npy")
+            self.data = fs_greedy_load(cache/"data")
         except FileNotFoundError:
-            print("loading transformed images into cache")
+            print("transforming images and loading into memmapped cache")
             os.makedirs(cache, exist_ok=True)
-            pattern = re.compile("n[0-9]{16}\.jpg")
 
-            images = [path for path in os.listdir(images_source_path) if pattern.match(path)]
-            img_path_to_id = {path: id for id, path in enumerate(images)}
+            img_path_to_id = {path: id for id, path in enumerate(image_filenames)}
 
-            tramsformed_images = [transform(images_source_path/path).numpy() for path in tqdm(images)]
+            tramsformed_images = np.array([transform(images_source_path/path).numpy() for path in tqdm(image_filenames)])
 
-            self.data = fs_greedy_load(cache/"data.npy", tramsformed_images)
+            self.data = fs_greedy_load(cache/"data", lst_array=tramsformed_images)
             self.map = img_path_to_id
             with open(cache/"image_path_to_id.pkl", "wb+") as handle:
                 pickle.dump(self.map, handle)
@@ -82,6 +80,17 @@ class MiniImagenet(Dataset):
         print('shuffle DB :%s, b:%d, %d-way, %d-shot, %d-query, resize:%d' % (
         mode, batchsz, n_way, k_shot, k_query, resize))
 
+        csvdata = self.loadCSV(os.path.join(root, mode + '.csv'))  # csv path
+        self.data = []
+        self.img2label = {}
+        for i, (k, v) in enumerate(csvdata.items()):
+            self.data.append(v)  # [[img1, img2, ...], [img111, ...]]
+            self.img2label[k] = i + self.startidx  # {"img_name[:9]":label}
+        # print(csvdata)
+        from itertools import chain
+        print("self data", len(set(chain(*self.data))))
+        self.cls_num = len(self.data)
+
         self.path = Path(root)/"images"  # image path
         if mode == 'train':
             transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
@@ -91,22 +100,14 @@ class MiniImagenet(Dataset):
                                                  transforms.ToTensor(),
                                                  transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
                                                  ])
-            self.transform = cached_transformer(self.path, Path(root)/"cache", transform)
+            self.transform = cached_transformer(self.path, set(chain(*self.data)), Path(root)/"cache"/mode, transform)
         else:
             transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
                                                  transforms.Resize((self.resize, self.resize)),
                                                  transforms.ToTensor(),
                                                  transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
                                                  ])
-            self.transform = cached_transformer(self.path, Path(root)/"cache", transform)
-
-        csvdata = self.loadCSV(os.path.join(root, mode + '.csv'))  # csv path
-        self.data = []
-        self.img2label = {}
-        for i, (k, v) in enumerate(csvdata.items()):
-            self.data.append(v)  # [[img1, img2, ...], [img111, ...]]
-            self.img2label[k] = i + self.startidx  # {"img_name[:9]":label}
-        self.cls_num = len(self.data)
+            self.transform = cached_transformer(self.path, set(chain(*self.data)), Path(root)/"cache"/mode, transform)
 
         self.create_batch(self.batchsz)
 
