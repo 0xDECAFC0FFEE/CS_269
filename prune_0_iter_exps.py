@@ -24,17 +24,25 @@ for expr_log in files:
     else:
         expr_params_iterations[expr_log] = {}
 
+files.sort()
+
+files_to_delete = []
+
 for expr_id in files:
     if expr_id in expr_iterations:
+        if expr_iterations[expr_id] == 0:
+            print("\u001b[31m", end="")
+            files_to_delete.append(expr_id)
+        else:
+            print("\u001b[0m", end="")
         print(expr_id, expr_iterations[expr_id])
         # print(expr_id, expr_params_iterations[expr_id]["model_training_params"]["meta_lr"])
 
-delete = input("delete 0 iteration logs? (y/n)")
+delete = input(f"found {len(files_to_delete)} 0 iteration logs. delete? (y/n)")
 
 if delete == "y":
-    for expr_id in files:
-        if expr_id in expr_iterations and expr_iterations[expr_id] == 0:
-            if (log_dir/expr_id).exists():
-                shutil.rmtree(log_dir/expr_id)
-            if (tensorboard_dir/expr_id).exists():
-                shutil.rmtree(tensorboard_dir/expr_id)
+    for expr_id in files_to_delete:
+        if (log_dir/expr_id).exists():
+            shutil.rmtree(log_dir/expr_id)
+        if (tensorboard_dir/expr_id).exists():
+            shutil.rmtree(tensorboard_dir/expr_id)

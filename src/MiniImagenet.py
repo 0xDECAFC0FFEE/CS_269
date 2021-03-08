@@ -7,6 +7,8 @@ import collections
 from PIL import Image
 import csv
 import random
+import torchvision
+from torchvision.transforms.functional import resize
 from .utils import fs_greedy_load
 import pickle
 from pathlib import Path
@@ -56,7 +58,7 @@ class MiniImagenet(Dataset):
     sets: conains n_way * k_shot for meta-train set, n_way * n_query for meta-test set.
     """
 
-    def __init__(self, root, mode, batchsz, n_way, k_shot, k_query, resize, startidx=0):
+    def __init__(self, root, mode, args, startidx=0):
         """
 
         :param root: root path of mini-imagenet
@@ -69,16 +71,15 @@ class MiniImagenet(Dataset):
         :param startidx: start to index label from startidx
         """
 
-        self.batchsz = batchsz  # batch of set, not batch of imgs
-        self.n_way = n_way  # n-way
-        self.k_shot = k_shot  # k-shot
-        self.k_query = k_query  # for evaluation
+        self.n_way = args["n_way"]  # n-way
+        self.k_shot = args["k_spt"]  # k-shot
+        self.k_query = args["k_qry"]  # for evaluation
         self.setsz = self.n_way * self.k_shot  # num of samples per set
         self.querysz = self.n_way * self.k_query  # number of samples per set for evaluation
-        self.resize = resize  # resize to
+        self.resize = args["imgsz"]  # resize to
         self.startidx = startidx  # index label not from 0, but from startidx
-        print('shuffle DB :%s, b:%d, %d-way, %d-shot, %d-query, resize:%d' % (
-        mode, batchsz, n_way, k_shot, k_query, resize))
+        # print('shuffle DB :%s, b:%d, %d-way, %d-shot, %d-query, resize:%d' % (
+        # mode, self.n_way, self.k_shot, self.k_query, self.resize))
 
         csvdata = self.loadCSV(os.path.join(root, mode + '.csv'))  # csv path
         self.data = []
@@ -93,21 +94,58 @@ class MiniImagenet(Dataset):
 
         self.path = Path(root)/"images"  # image path
         if mode == 'train':
-            transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
-                                                 transforms.Resize((self.resize, self.resize)),
-                                                 # transforms.RandomHorizontalFlip(),
-                                                 # transforms.RandomRotation(5),
-                                                 transforms.ToTensor(),
-                                                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-                                                 ])
-            self.transform = cached_transformer(self.path, set(chain(*self.data)), Path(root)/"cache"/mode, transform)
+            self.batchsz = args.get("train_bs", 10000)  # batch of set, not batch of imgs
+            # transform = transforms.Compose([
+            #     lambda x: Image.open(x).convert('RGB'),
+            #     transforms.ToTensor(),
+            #     transforms.Resize((self.resize, self.resize)),
+            #     transforms.RandomResizedCrop(self.resize),
+            #     transforms.ColorJitter(.4, .4, .4, 0),
+            #     transforms.RandomHorizontalFlip(),
+            #     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+            # ])
+            # self.transform = transform
+
+            if args["train_image_aug"]:
+                tensor_transforms = torch.nn.Sequential(
+                    transforms.Resize((self.resize, self.resize)),
+                    transforms.RandomResizedCrop(self.resize),
+                    transforms.ColorJitter(.4, .4, .4, 0),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                )
+                self.transform = torch.jit.script(tensor_transforms)
+            else:
+                tensor_transforms = torch.nn.Sequential(
+                    transforms.Resize((self.resize, self.resize)),
+                    # transforms.RandomResizedCrop(self.resize),
+                    # transforms.ColorJitter(.4, .4, .4, 0),
+                    # transforms.RandomHorizontalFlip(),
+                    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                )
+                self.transform = torch.jit.script(tensor_transforms)
+
+            # self.transform = cached_transformer(self.path, set(chain(*self.data)), Path(root)/"cache"/mode/"no_augment", transform)
         else:
-            transform = transforms.Compose([lambda x: Image.open(x).convert('RGB'),
-                                                 transforms.Resize((self.resize, self.resize)),
-                                                 transforms.ToTensor(),
-                                                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-                                                 ])
-            self.transform = cached_transformer(self.path, set(chain(*self.data)), Path(root)/"cache"/mode, transform)
+            self.batchsz = args.get("test_bs", 100)  # batch of set, not batch of imgs
+            # transform = transforms.Compose([
+            #     lambda x: Image.open(x).convert('RGB'),
+            #     transforms.Resize((self.resize, self.resize)),
+            #     #  transforms.RandomResizedCrop(self.resize),
+            #     #  transforms.ColorJitter(.4, .4, .4, .4),
+            #     #  transforms.RandomHorizontalFlip(),
+            #      transforms.ToTensor(),
+            #     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+            # ])
+            # self.transform = transform
+
+            tensor_transforms = torch.nn.Sequential(
+                transforms.Resize((self.resize, self.resize)),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+            )
+            self.transform = torch.jit.script(tensor_transforms)
+
+            # self.transform = cached_transformer(self.path, set(chain(*self.data)), Path(root)/"cache"/mode, transform)
 
         self.create_batch(self.batchsz)
 
@@ -176,12 +214,12 @@ class MiniImagenet(Dataset):
         query_x = torch.FloatTensor(self.querysz, 3, self.resize, self.resize)
         # query_y shape = [querysz]
 
-        flatten_support_x = [item for sublist in self.support_x_batch[index] for item in sublist]
+        flatten_support_x = [os.path.join(self.path, item) for sublist in self.support_x_batch[index] for item in sublist]
         support_y = np.array(
             [self.img2label[item[:9]]  # filename:n0153282900000005.jpg, the first 9 characters treated as label
              for sublist in self.support_x_batch[index] for item in sublist]).astype(np.int32)
 
-        flatten_query_x = [item for sublist in self.query_x_batch[index] for item in sublist]
+        flatten_query_x = [os.path.join(self.path, item) for sublist in self.query_x_batch[index] for item in sublist]
         query_y = np.array([self.img2label[item[:9]]
                             for sublist in self.query_x_batch[index] for item in sublist]).astype(np.int32)
 
@@ -201,10 +239,12 @@ class MiniImagenet(Dataset):
         # print('relative:', support_y_relative, query_y_relative)
 
         for i, path in enumerate(flatten_support_x):
-            support_x[i] = torch.FloatTensor(self.transform(path))
+            # support_x[i] = torch.FloatTensor(self.transform(path))
+            support_x[i] = self.transform(torchvision.transforms.functional.to_tensor(Image.open(path).convert('RGB')))
 
         for i, path in enumerate(flatten_query_x):
-            query_x[i] = torch.FloatTensor(self.transform(path))
+            # query_x[i] = torch.FloatTensor(self.transform(path))
+            query_x[i] = self.transform(torchvision.transforms.functional.to_tensor(Image.open(path).convert('RGB')))
         # print(support_set_y)
         # return support_x, torch.LongTensor(support_y), query_x, torch.LongTensor(query_y)
 

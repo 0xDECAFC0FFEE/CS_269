@@ -1,14 +1,13 @@
 from tqdm import tqdm
 import numpy as np
-np.core.arrayprint._line_width = 270
+np.set_printoptions(linewidth=np.inf)
 import torch
-torch.set_printoptions(linewidth=270)
+torch.set_printoptions(linewidth=np.inf)
 try:
     from torch.utils.tensorboard import SummaryWriter
 except:
     from unittest.mock import Mock as SummaryWriter
 import copy
-from ..utils import Logger
 from .mask_ops import build_mask, apply_mask, update_mask
 from .lth import detect_early_bird
 from src.models.meta import Meta
@@ -18,7 +17,7 @@ from datetime import datetime
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def run(dataset, lottery_ticket_params):
+def run(dataset, lottery_ticket_params, logger):
     """
     executes a lottery ticket hypothesis run (repeatedly trains n epochs, prunes, reinitializes)
     """
@@ -46,10 +45,21 @@ def run(dataset, lottery_ticket_params):
     test_accs_per_prune_iter = []
     epoch_runtimes_per_prune_iter = []
 
-    project_dir = Path(lottery_ticket_params["project_dir"])
-    logger = Logger(project_dir, project_dir/"logs")
-    
     writer = SummaryWriter(log_dir=f'tensorboard/{lottery_ticket_params["expr_id"]}')
+    logger.snapshot(
+        expr_id=lottery_ticket_params["expr_id"], 
+        initial_weights=initial_weights,
+        masks=masks,
+        model_state_dicts=model_state_dicts,
+        expr_params_JSON=lottery_ticket_params,
+        train_accs_JSON=train_accs_per_prune_iter,
+        test_accs_JSON=test_accs_per_prune_iter,
+        val_accs_JSON=val_accs_per_prune_iter,
+        epoch_runtimes_TXT=str(epoch_runtimes_per_prune_iter),
+        prune_iterations_TXT="0"
+    )
+
+    print(f"{len(train_data)} training steps, {expr_params['meta_training_epochs']} training epochs, {prune_strategy['iterations']} pruning iterations")
     
     for prune_iter in range(prune_strategy["iterations"]):
         print(f"========================\nstarting prune iteration {prune_iter}\n========================")
@@ -73,7 +83,6 @@ def run(dataset, lottery_ticket_params):
 
         # scoring masked model
         test_accs = test(model, mask, test_data, training_params)
-        
         max_test_acc, max_test_acc_epoch = 0, 0
         for i, test_acc in enumerate(test_accs):
             if test_acc > max_test_acc:
@@ -82,8 +91,8 @@ def run(dataset, lottery_ticket_params):
 
             writer.add_scalars("test acc", {f"prune iteration {prune_iter}": test_acc}, i)
         
-        writer.add_scalars("max test epoch per prune iter", {lottery_ticket_params["expr_id"]: max_test_acc_epoch}, prune_iter)
-        writer.add_scalars("max test acc per prune iter", {lottery_ticket_params["expr_id"]: max_test_acc}, prune_iter)
+        writer.add_scalars("max test epoch per prune iter", {lottery_ticket_params["uid"]: max_test_acc_epoch}, prune_iter)
+        writer.add_scalars("max test acc per prune iter", {lottery_ticket_params["uid"]: max_test_acc}, prune_iter)
         
         early_stop_epoch = 0
         for i in range(len(test_accs)-1):
@@ -95,8 +104,8 @@ def run(dataset, lottery_ticket_params):
             early_stop_acc = test_accs[-1]
             early_stop_epoch = len(test_accs)-1
 
-        writer.add_scalars("early stop epoch", {lottery_ticket_params["expr_id"]: early_stop_epoch}, prune_iter)
-        writer.add_scalars("early stop acc", {lottery_ticket_params["expr_id"]: early_stop_acc}, prune_iter)
+        writer.add_scalars("early stop epoch", {lottery_ticket_params["uid"]: early_stop_epoch}, prune_iter)
+        writer.add_scalars("early stop acc", {lottery_ticket_params["uid"]: early_stop_acc}, prune_iter)
 
         writer.flush()
         test_accs_per_prune_iter.append({"prune_iter": prune_iter, "prune_rate": pruned_rate, "test_accs": list(test_accs)})
@@ -182,6 +191,9 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
                 if max(accs) > best_val_acc:
                     best_val_acc = max(accs)
                     best_model_state = {n: w.cpu().detach() for n, w in model.state_dict().items()}
+
+        # print(sum(self.counts.values())/len(self.counts), len(self.counts))
+
         val_accs.extend(epoch_val_accs)
 
         runtime = datetime.now()-start_time
@@ -214,7 +226,7 @@ def test(model, mask, test_data, expr_params):
 def test_finetuning(test_data, lottery_ticket_params, log_dir):
     prune_strategy = lottery_ticket_params["prune_strategy"]
     training_params = lottery_ticket_params["model_training_params"]
-    dataset_params = dataset_params["dataset_params"]
+    dataset_params = lottery_ticket_params["dataset_params"]
 
     # building model
     images_spt, labels_spt, images_qry, labels_qry  = next(iter(test_data))

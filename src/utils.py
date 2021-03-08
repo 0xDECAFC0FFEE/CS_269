@@ -91,7 +91,6 @@ def flatten(iterable, max_depth=np.inf):
     assert(max_depth >= 0)
     return recursive_step(iterable, max_depth)
 
-
 def new_expr_id(*args):
     """
     returns new experiemnt id for process.
@@ -101,9 +100,14 @@ def new_expr_id(*args):
     nonce = random.choices(chars+nums, k=5)
     nonce = "".join(nonce)
 
-    time = datetime.datetime.now().strftime("%Y-%m-%d|%H:%M:%S")
+    date = datetime.datetime.now().strftime("%Y-%m-%d")
+    time = datetime.datetime.now().strftime("%H:%M:%S")
 
-    return "|".join(["expr", time, nonce, *args])
+    args = [arg.replace(" ", "_") for arg in args]
+
+    expr_id = ".".join([f"[{v}]" for v in [date, time, nonce, *args]])
+    expr_id = f"expr.{expr_id}"
+    return expr_id, nonce
 
 
 def weight_init(m):
@@ -196,10 +200,8 @@ class Logger:
         - raises exception if directory already exists
         - auto skips saving files not tracked by git
         - auto skips saving anything in log_folder (don't want to recursively copy everything) 
-        - arguments that end in "_JSON" are saved as json files
-        - arguments that end in "_TXT" are saved as text files
-        - by default, arguments are saved as pickle files
-
+        - see update_snapshot for kwargs naming scheme
+        
         logger = Logger("/project_dir", "/project_dir/logs")
         logger.save_snapshot(
             "experiment 5", 
@@ -239,14 +241,20 @@ class Logger:
 
         self.update_snapshot(expr_id, **kwargs)
 
-    def update_snapshot(self, expr_id, **kwargs):
+    def update_snapshot(self, expr_id, files_to_update=None,**kwargs):
         """
         updates a log snapshot that exists with values in the kwargs.
 
-        - arguments that end in "_JSON" are saved as json files
-        - arguments that end in "_TXT" are saved as text files
-        - by default, arguments are saved as pickle files
-        - will save argument values in files based off of the parameter names
+        - kwarg naming scheme:
+            - will save argument values in files based off of the parameter names
+            - arguments that end in "_JSON" are saved as json files
+            - arguments that end in "_TXT" are saved as text files
+            - arguments that end in "_CSV" are saved as csv files
+            - models that end in "_PYTORCH" are saved with torch.save
+            - by default, arguments are saved as pickle files
+        
+        file paths in files_to_update will be updated. files in the project directory not in
+        files_to_update will not be updated if they already exist in the log directory
 
         logger = Logger("/project_dir", "/project_dir/logs")
         logger.save_snapshot("experiment 5")
@@ -266,6 +274,7 @@ class Logger:
             json_flag = "_JSON"
             txt_flag = "_TXT"
             csv_flag = "_CSV"
+            pytorch_flag = "_PYTORCH"
             
             try:
                 if name[-len(json_flag):] == json_flag:
@@ -282,23 +291,43 @@ class Logger:
                         writer = csv.DictWriter(handle, fieldnames=value[0].keys())
                         writer.writeheader()
                         writer.writerows(value)
+                elif name[-len(pytorch_flag):] == pytorch_flag:
+                    name = name[:-len(pytorch_flag)]
+                    torch.save(value, log_folder/f"{name}.pth")
                 else:
                     with open(log_folder/f"{name}.pkl", "wb+") as handle:
                         pickle.dump(value, handle)
             except TypeError as e:
                 print(f"triggered on key {name}")
                 raise TypeError(e)
-    def snapshot(self, expr_id, **kwargs):
+            
+            if files_to_update != None:
+                for path in files_to_update:
+                    src = self.project_folder/path
+                    dest = log_folder/path
+                    if str(src.resolve()).startswith(str(self.log_folder)+os.sep):
+                        continue
+
+                    if not dest.parent.exists():
+                        os.makedirs(dest.parent)
+
+                    shutil.copy(src, dest, follow_symlinks=False)
+
+    def snapshot(self, expr_id, files_to_update=None, **kwargs):
         """
         snapshots a directory by saving project_dir directory and saving any kwargs
 
         first call with a specific expr_id will copy the project_dir directory in that log directory
-        subsequent calls will only update the log directory with the kwarg values
+        subsequent calls will update the log directory with the kwarg key values
         see update_snapshot for kwargs naming scheme
+
+        note that subsequent calls to snapshot won't update files in the log directory unless
+        it is in the files_to_update list
 
         logger = Logger("/project_dir", "/project_dir/logs")
         logger.snapshot(
             "experiment 5", 
+            files_to_update=["program_outputs.txt", "current_model.pkl"],
             training_params_JSON=training_params,
             testing_accs_TXT=testing_accs,
             model_parameters=model_parameters
@@ -309,7 +338,7 @@ class Logger:
         if not log_folder.exists():
             self.save_snapshot(expr_id, **kwargs)
         else:
-            self.update_snapshot(expr_id, **kwargs)
+            self.update_snapshot(expr_id, files_to_update=files_to_update, **kwargs)
 
 def set_seeds(seed, cudnn_enabled=True):
     if seed != None:
@@ -327,7 +356,7 @@ def set_seeds(seed, cudnn_enabled=True):
 
 class fs_greedy_load:
     """
-    greedily loads everything in lst_arrays and stores it as a memory mapped numpy file
+    greedily loads everything in lst_arrays and stores it as a chunked memory mapped numpy file
     on second run, loads numpy file instead to save ram
 
     zarr is slow as shit wtf
@@ -361,22 +390,51 @@ class fs_greedy_load:
         return self.array_chunks[chunk_index][array_index]
 
     def __len__(self):
-<<<<<<< HEAD
         return sum([len(chunk) for chunk in self.array_chunks])
-
 
 def DummySummaryWriter(*args, **kwargs):
     from unittest.mock import Mock
     return Mock()
-=======
-        return len(self.array)
-    
+
 def sparsity(model, threshold=0.001):
     state_dict = model
     num_params = sum([np.prod(weights.shape) for n, weights in state_dict.items() ] )
     zeros = sum([torch.sum(torch.abs(weights) < threshold).cpu() for n, weights in state_dict.items() ] )
     return zeros / num_params
->>>>>>> 250d7f0f2855192d07b4c9463a3ecbf10d715b99
+
+class tee:
+    def __init__(self, filename):
+        """redirects output to file filename and terminal at the same time
+
+        tee("output.log")
+        instantiating will automatically print output to terminal and output.log
+        plays well with tqdm & Logger
+        make sure to add the redirected filename to files_to_update in logger.snapshot()
+
+        Args:
+            filename (str): filename to redirect output to
+        """
+        import sys
+        from pathlib import Path
+
+        filename = Path(filename)
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        self.log = open(filename, "w+")
+        
+        self.terminal = sys.stdout
+        sys.stdout = self
+
+        print(f"T piping output to stdout and {filename}")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.terminal.flush()
+
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        pass
 
 if __name__ == "__main__":
     a = fs_greedy_load("fs_greedy_load_test", [np.arange(1000, dtype=np.float32).reshape(5, 2, 5, 20) for _ in range(1000000)])

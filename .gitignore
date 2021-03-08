@@ -134,3 +134,4 @@ logs/*/*
 logs/*.zip
 .docker_zsh_history
 compiled_pytorch_wheel_python_3_7_armv7
+program_outputs/*

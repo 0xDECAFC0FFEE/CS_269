@@ -8,7 +8,7 @@ import shutil
 import pickle
 from tqdm import tqdm
 import numpy as np
-from .utils import fs_greedy_load
+from .utils import fs_greedy_load, new_expr_id
 
 def cifar10(args):
     dataset_path = Path(args.get("dataset_location", 'data/CFAR10'))
@@ -44,7 +44,7 @@ def mnist(args):
 
     return train, val, test
 
-def download_raw(dataset_path, saved_image_zip_file=None):
+def download_mini_imagenet(dataset_path, saved_image_zip_file=None):
     """
     downloads raw maml jpeg images and csv train-val-test split files
     """
@@ -71,23 +71,17 @@ def download_raw(dataset_path, saved_image_zip_file=None):
 
 def build_meta_learning_tasks(dataset_path, args, disable_training=False):
     if not disable_training:
-        train = MiniImagenet(dataset_path, mode='train', n_way=args["n_way"], k_shot=args["k_spt"],
-                            k_query=args["k_qry"],
-                            batchsz=args.get("train_bs", 10000), resize=args["imgsz"])
-        train = torch.utils.data.DataLoader(train, args["task_num"], shuffle=False, num_workers=0, pin_memory=True)
+        train = MiniImagenet(dataset_path, mode='train', args=args)
+        train = torch.utils.data.DataLoader(train, args["task_num"], shuffle=args["shuffle"], num_workers=10, pin_memory=True)
 
-        val = MiniImagenet(dataset_path, mode='val', n_way=args["n_way"], k_shot=args["k_spt"],
-                                k_query=args["k_qry"],
-                                batchsz=args.get("test_bs", 100), resize=args["imgsz"])
-        val = torch.utils.data.DataLoader(val, 1, shuffle=False, num_workers=0, pin_memory=True)
+        val = MiniImagenet(dataset_path, mode='val', args=args)
+        val = torch.utils.data.DataLoader(val, 1, shuffle=False, num_workers=10, pin_memory=True)
 
     else:
         train, val = None, None
 
-    test = MiniImagenet(dataset_path, mode='test', n_way=args["n_way"], k_shot=args["k_spt"],
-                             k_query=args["k_qry"],
-                             batchsz=args.get("test_bs", 100), resize=args["imgsz"])
-    test = torch.utils.data.DataLoader(test, 1, shuffle=False, num_workers=0, pin_memory=True)
+    test = MiniImagenet(dataset_path, mode='test', args=args)
+    test = torch.utils.data.DataLoader(test, 1, shuffle=False, num_workers=10, pin_memory=True)
 
     return train, val, test
 
@@ -99,7 +93,7 @@ def mini_imagenet(args, redownload=False, disable_training=False):
         shutil.rmtree(dataset_path)
 
     if not dataset_path.exists():
-        download_raw(dataset_path)
+        download_mini_imagenet(dataset_path)
 
     return build_meta_learning_tasks(dataset_path, args, disable_training=disable_training)
 
@@ -114,3 +108,61 @@ def dataset(args, **kwargs):
         return mini_imagenet(args, **kwargs)
     else:
         raise NotImplementedError(f"dataset {dataset_name} not implemented")
+
+
+if __name__ == "__main__":
+    # visualize image augmentations in tensorboard - first call should have same images and labels as second but augmentations should be different
+    dataset_params = {
+        "n_way": 5,                         # number of classes to choose between for each task
+        "k_spt": 1,                         # k shot for support set (number of examples per class per task)
+        "k_qry": 15,                        # k shot for query set (number of examples per class per task)
+        "imgsz": 84,                        # image size
+        "task_num": 4,                      # meta model batch size
+        "train_bs": 10000,                  # training batch size
+        "test_bs": 100,                     # val/test batch size
+        "shuffle": False,
+        "dataset_name": "mini_imagenet",
+        "dataset_location": "data/miniimagenet",
+    }
+    ds = dataset(dataset_params, redownload=False)
+
+    train_data, val_data, test_data = ds
+    images_spt, labels_spt, images_qry, labels_qry  = next(iter(train_data))
+    
+    from torch.utils.tensorboard import SummaryWriter
+
+    _, id = new_expr_id()
+    print(id)
+
+    # iterating through a task's support/query sets and saving their augmented images to tensorboard
+    writer = SummaryWriter(log_dir=f'tensorboard/{id}_1st_run')
+    i = 0
+    for images_s, labels_s, images_q, labels_q in zip(images_spt, labels_spt, images_qry, labels_qry):
+        for image, label in zip(images_s, labels_s):
+            writer.add_image(f"class {label}", image, i)
+            i += 1
+
+        for image, label in zip(images_q, labels_q):
+            writer.add_image(f"class {label}", image, i)
+            i += 1
+        break
+
+    writer.flush()
+    writer.close()
+
+    # if shuffle=false, iterating through the smae task's support/query sets and saving their augmented images to tensorboard. these images should have differnet crops/hues etc from the first images
+    writer = SummaryWriter(log_dir=f'tensorboard/{id}_2nd_run')
+
+    images_spt, labels_spt, images_qry, labels_qry  = next(iter(train_data))
+    for images_s, labels_s, images_q, labels_q in zip(images_spt, labels_spt, images_qry, labels_qry):
+        for image, label in zip(images_s, labels_s):
+            writer.add_image(f"class {label}", image, i)
+            i += 1
+
+        for image, label in zip(images_q, labels_q):
+            writer.add_image(f"class {label}", image, i)
+            i += 1
+        break
+
+    writer.flush()
+    writer.close()
