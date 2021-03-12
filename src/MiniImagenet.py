@@ -281,6 +281,10 @@ class MiniImagenet(Dataset):
         torch_qyh = torch.from_numpy(query_y_relative)
         onehot_query_y_relative = F.one_hot(torch_qyh.long(), num_classes=5)
 
+        one_hot_spt_y = torch.zeros(support_y_relative.shape[0], 5)
+        one_hot_spt_y.scatter_(1, torch.LongTensor(support_y_relative[..., None]), 1)
+        support_y_relative = one_hot_spt_y
+
 
         #print("onehot",onehot_query_y_relative)
 
@@ -318,6 +322,8 @@ class MiniImagenet(Dataset):
 
         if random.randint(0, 100) == 50:
             print("average image augmentation calls: ", sum(self.counts.values())/len(self.counts), "total # of images:", len(self.counts))
+
+
 
         #return support_x, torch.LongTensor(support_y_relative), query_x, torch.Tensor(query_y_relative)
         return support_x, torch.FloatTensor(support_y_relative), query_x, query_y_relative
