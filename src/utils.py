@@ -91,7 +91,6 @@ def flatten(iterable, max_depth=np.inf):
     assert(max_depth >= 0)
     return recursive_step(iterable, max_depth)
 
-
 def new_expr_id(*args):
     """
     returns new experiemnt id for process.
@@ -101,9 +100,14 @@ def new_expr_id(*args):
     nonce = random.choices(chars+nums, k=5)
     nonce = "".join(nonce)
 
-    time = datetime.datetime.now().strftime("%Y-%m-%d|%H:%M:%S")
+    date = datetime.datetime.now().strftime("%Y-%m-%d")
+    time = datetime.datetime.now().strftime("%H:%M:%S")
 
-    return "|".join(["expr", time, nonce, *args])
+    args = [arg.replace(" ", "_") for arg in args]
+
+    expr_id = ".".join([f"[{v}]" for v in [date, time, nonce, *args]])
+    expr_id = f"expr.{expr_id}"
+    return expr_id, nonce
 
 
 def weight_init(m):
@@ -327,7 +331,7 @@ def set_seeds(seed, cudnn_enabled=True):
 
 class fs_greedy_load:
     """
-    greedily loads everything in lst_arrays and stores it as a memory mapped numpy file
+    greedily loads everything in lst_arrays and stores it as a chunked memory mapped numpy file
     on second run, loads numpy file instead to save ram
 
     zarr is slow as shit wtf
@@ -363,18 +367,54 @@ class fs_greedy_load:
     def __len__(self):
         return sum([len(chunk) for chunk in self.array_chunks])
 
-
 def DummySummaryWriter(*args, **kwargs):
     from unittest.mock import Mock
     return Mock()
 
-    
 def sparsity(model, threshold=0.001):
     state_dict = model
     num_params = sum([np.prod(weights.shape) for n, weights in state_dict.items() ] )
     zeros = sum([torch.sum(torch.abs(weights) < threshold).cpu() for n, weights in state_dict.items() ] )
     return zeros / num_params
 
+class tee:
+    def __init__(self, filename):
+        """redirects output to file filename and terminal at the same time
+
+        tee("output.log")
+        ^ instantiating will automatically print output to terminal and output.log
+        plays well with tqdm
+
+        Args:
+            filename (str): filename to redirect output to
+        """
+        import sys
+        from pathlib import Path
+        print(f"T piping output to stdout and {filename}")
+
+        Path(filename).parent.mkdir(parents=True, exist_ok=True)
+        self.terminal = sys.stdout
+        self.log = open(filename, "w")
+        sys.stdout = self
+
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.terminal.flush()
+
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        pass
+
+class mixup(torch.nn.Module):
+    def __init__(self):
+
+        pass
+
+# https://pytorch.org/docs/stable/torchvision/transforms.html
+# 
 
 if __name__ == "__main__":
     a = fs_greedy_load("fs_greedy_load_test", [np.arange(1000, dtype=np.float32).reshape(5, 2, 5, 20) for _ in range(1000000)])

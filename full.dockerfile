@@ -17,11 +17,11 @@ COPY ports.sh ports.sh
 RUN echo "Port "`./ports.sh ssh`"\nPermitEmptyPasswords yes\nX11Forwarding yes\nPrintMotd no\nAcceptEnv LANG LC_*\nSubsystem       sftp    /usr/lib/openssh/sftp-server\nPasswordAuthentication yes\nPermitRootLogin yes" > /etc/ssh/sshd_config
 
 # installing notebook tqdm for jupyter
-RUN conda install jupyterlab -y
-RUN conda install -c conda-forge ipywidgets -y
-RUN conda upgrade -c conda-forge jupyterlab -y
-RUN conda install nodejs -y
-RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager -y
+# RUN conda install jupyterlab -y
+# RUN conda install -c conda-forge ipywidgets -y
+# RUN conda upgrade -c conda-forge jupyterlab -y
+# RUN conda install nodejs -y
+# RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager -y
 
 # install lucas's env
 ADD https://api.github.com/repos/0xDECAFC0FFEE/.setup/git/refs/ version.json
@@ -32,7 +32,7 @@ RUN python3 /root/.setup/setup.py --disable-ssh
 RUN conda config --append channels conda-forge
 COPY requirements_full.txt /root/requirements.txt
 RUN conda install --file /root/requirements.txt
-RUN jupyter lab build
+# RUN jupyter lab build
 RUN conda install expect gdown snakeviz
 
 CMD ./start_jupyter_tensorboard_ssh.sh && cd /workspace && `which zsh`

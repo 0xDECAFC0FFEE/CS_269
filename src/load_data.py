@@ -71,23 +71,34 @@ def download_raw(dataset_path, saved_image_zip_file=None):
 
 def build_meta_learning_tasks(dataset_path, args, disable_training=False):
     if not disable_training:
+        num_workers = 0
+        train = MiniImagenet(dataset_path, mode='train', args=args)
+        '''
         train = MiniImagenet(dataset_path, mode='train', n_way=args["n_way"], k_shot=args["k_spt"],
                             k_query=args["k_qry"],
                             batchsz=args.get("train_bs", 10000), resize=args["imgsz"])
-        train = torch.utils.data.DataLoader(train, args["task_num"], shuffle=False, num_workers=0, pin_memory=True)
+        '''
+        train = torch.utils.data.DataLoader(train, args["task_num"], shuffle=False, num_workers=num_workers, pin_memory=True)
+
+        '''
 
         val = MiniImagenet(dataset_path, mode='val', n_way=args["n_way"], k_shot=args["k_spt"],
                                 k_query=args["k_qry"],
                                 batchsz=args.get("test_bs", 100), resize=args["imgsz"])
-        val = torch.utils.data.DataLoader(val, 1, shuffle=False, num_workers=0, pin_memory=True)
+        '''
+        val = MiniImagenet(dataset_path, mode='val', args=args)
+        val = torch.utils.data.DataLoader(val, 1, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     else:
         train, val = None, None
 
+    '''
     test = MiniImagenet(dataset_path, mode='test', n_way=args["n_way"], k_shot=args["k_spt"],
                              k_query=args["k_qry"],
                              batchsz=args.get("test_bs", 100), resize=args["imgsz"])
-    test = torch.utils.data.DataLoader(test, 1, shuffle=False, num_workers=0, pin_memory=True)
+    '''
+    test = MiniImagenet(dataset_path, mode='test', args=args)
+    test = torch.utils.data.DataLoader(test, 1, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     return train, val, test
 
