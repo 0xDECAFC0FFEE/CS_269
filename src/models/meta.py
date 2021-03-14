@@ -45,6 +45,19 @@ class Meta(nn.Module):
         self.net = Learner(config, dataset_params["imgsz"])
         self.meta_optim = optim.Adam(self.net.parameters(), lr=self.meta_lr)
 
+    def multihot_cross_entropy(self, pred_prob, label_prob, reduction='average'):
+        '''
+        :param pred_prob : k-shot(batch) x classes
+        :param label_prob: k-shot(batch)
+        :param reduction: sum or average
+        '''
+        log_likelihood = -1 *torch.nn.functional.log_softmax(pred_prob, dim=1)
+        if reduction == "average":
+            loss = torch.sum(torch.mul(log_likelihood,label_prob))/label_prob.size(0)
+        else:
+            loss = torch.sum(torch.mul(log_likelihood,label_prob))
+        return loss
+
 
     def forward(self, mask, x_spt, y_spt, x_qry, y_qry):
         """
@@ -72,27 +85,30 @@ class Meta(nn.Module):
             with torch.no_grad():
                 # [setsz, nway]
                 logits_q = self.net(mask, x_qry[i], fast_weights, training=True)
-                loss_q = F.cross_entropy(logits_q, y_qry[i])
+                loss_q = self.multihot_cross_entropy(logits_q, y_qry[i])
+
                 losses_q[0] += loss_q
 
                 pred_q = F.softmax(logits_q, dim=1).argmax(dim=1)
-                correct = torch.eq(pred_q, y_qry[i]).sum().item()
+                correct = torch.eq(pred_q, y_qry[i].argmax(dim=1)).sum().item()
+
                 corrects[0] += correct
 
             for k in range(self.update_step):
                 # 1. run the i-th task and compute loss for k=1~K-1
                 logits = self.net(mask, x_spt[i], fast_weights, training=True)
-                loss = F.cross_entropy(logits, y_spt[i])
+
+                loss = self.multihot_cross_entropy(logits, y_spt[i])
 
                 fast_weights = update_weights(fast_weights.items(), loss, self.update_lr, self.first_order)
 
                 logits_q = self.net(mask, x_qry[i], fast_weights, training=True)
-                loss_q = F.cross_entropy(logits_q, y_qry[i])
+                loss_q = self.multihot_cross_entropy(logits_q, y_qry[i])
                 losses_q[k + 1] += loss_q
 
                 with torch.no_grad():
                     pred_q = F.softmax(logits_q, dim=1).argmax(dim=1)
-                    correct = torch.eq(pred_q, y_qry[i]).sum().item()
+                    correct = torch.eq(pred_q, y_qry[i].argmax(dim=1)).sum().item()
                     corrects[k + 1] += correct
 
         # end of all tasks
@@ -101,10 +117,9 @@ class Meta(nn.Module):
 
         # optimize theta parameters
         self.meta_optim.zero_grad()
-        loss_q.backward()
-        # print('meta update')
-        # for p in self.net.parameters()[:5]:
-        # 	print(torch.norm(p).item())
+        # loss_q.backward()
+        loss_q.backward(loss_q.clone().detach())
+        
         self.meta_optim.step()
 
 
@@ -137,17 +152,17 @@ class Meta(nn.Module):
         with torch.no_grad():
             logits_q = net(mask, x_qry, fast_weights, training=True)
             pred_q = F.softmax(logits_q, dim=1).argmax(dim=1)
-            corrects.append(torch.eq(pred_q, y_qry).sum().item()/x_qry.size(0))
+            corrects.append(torch.eq(pred_q, y_qry.argmax(dim=1)).sum().item()/x_qry.size(0))
 
         for k in range(self.finetune_step):
             logits = net(mask, x_spt, fast_weights, training=True)
-            loss = F.cross_entropy(logits, y_spt)
+            loss = self.multihot_cross_entropy(logits, y_spt)
             fast_weights = update_weights(fast_weights.items(), loss, self.update_lr, False)
 
             with torch.no_grad():
                 logits_q = net(mask, x_qry, fast_weights, training=True)
                 pred_q = F.softmax(logits_q, dim=1).argmax(dim=1)
-                corrects.append(torch.eq(pred_q, y_qry).sum().item()/x_qry.size(0))
+                corrects.append(torch.eq(pred_q, y_qry.argmax(dim=1)).sum().item()/x_qry.size(0))
 
         del net
 

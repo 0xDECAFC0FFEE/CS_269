@@ -15,6 +15,8 @@ from pathlib import Path
 from tqdm import tqdm
 import re
 import shutil
+import torch.nn.functional as F
+
 
 class cached_transformer:
     def __init__(self, images_source_path, image_filenames, cache, transform, reload_cache=False):
@@ -77,6 +79,8 @@ class MiniImagenet(Dataset):
         self.setsz = self.n_way * self.k_shot  # num of samples per set
         self.querysz = self.n_way * self.k_query  # number of samples per set for evaluation
         self.resize = args["imgsz"]  # resize to
+        self.mixup = args["mixup"]   # mixup augmentations
+        self.mode = mode            # train/test mode
         self.startidx = startidx  # index label not from 0, but from startidx
         # print('shuffle DB :%s, b:%d, %d-way, %d-shot, %d-query, resize:%d' % (
         # mode, self.n_way, self.k_shot, self.k_query, self.resize))
@@ -200,6 +204,22 @@ class MiniImagenet(Dataset):
 
             self.support_x_batch.append(support_x)  # append set to current sets
             self.query_x_batch.append(query_x)  # append sets to current sets
+    
+    def mixup_data(self, x, y, alpha=1.0):
+        '''Returns mixed inputs, pairs of targets, and lambda'''
+        if alpha > 0:
+            lam = np.random.beta(alpha, alpha)
+        else:
+            lam = 1
+
+        batch_size = x.size()[0]
+        index = torch.randperm(batch_size)
+
+        mixed_x = lam * x + (1 - lam) * x[index, :]
+
+        #y_a, y_b = y, y[index]
+        mixed_y = lam * y + (1 - lam) * y[index, :]     
+        return mixed_x, mixed_y, lam
 
     def __getitem__(self, index):
         """
@@ -230,13 +250,11 @@ class MiniImagenet(Dataset):
         unique = np.unique(support_y)
         random.shuffle(unique)
         # relative means the label ranges from 0 to n-way
-        support_y_relative = np.zeros(self.setsz)
-        query_y_relative = np.zeros(self.querysz)
+        support_y_relative = np.zeros(self.setsz, dtype=np.long)
+        query_y_relative = np.zeros(self.querysz, dtype=np.long)
         for idx, l in enumerate(unique):
             support_y_relative[support_y == l] = idx
             query_y_relative[query_y == l] = idx
-
-        # print('relative:', support_y_relative, query_y_relative)
 
         for i, path in enumerate(flatten_support_x):
             # support_x[i] = torch.FloatTensor(self.transform(path))
@@ -245,10 +263,16 @@ class MiniImagenet(Dataset):
         for i, path in enumerate(flatten_query_x):
             # query_x[i] = torch.FloatTensor(self.transform(path))
             query_x[i] = self.transform(torchvision.transforms.functional.to_tensor(Image.open(path).convert('RGB')))
-        # print(support_set_y)
-        # return support_x, torch.LongTensor(support_y), query_x, torch.LongTensor(query_y)
 
-        return support_x, torch.LongTensor(support_y_relative), query_x, torch.LongTensor(query_y_relative)
+        torch_qyh = torch.from_numpy(query_y_relative)
+        torch_syh = torch.from_numpy(support_y_relative)
+        query_y_relative = F.one_hot(torch_qyh, num_classes=self.n_way)
+        support_y_relative = F.one_hot(torch_syh, num_classes=self.n_way)
+
+        if self.mixup and self.mode == "train":
+            query_x, query_y_relative, c = self.mixup_data(query_x, query_y_relative, alpha=1.0)
+
+        return support_x, support_y_relative, query_x, query_y_relative
 
     def __len__(self):
         # as we have built up to batchsz of sets, you can sample some small batch size of sets.
@@ -265,7 +289,7 @@ if __name__ == '__main__':
     plt.ion()
 
     tb = SummaryWriter('runs', 'mini-imagenet')
-    mini = MiniImagenet('../mini-imagenet/', mode='train', n_way=5, k_shot=1, k_query=1, batchsz=1000, resize=168)
+    mini = MiniImagenet('../miniimagenet/', mode='train', args={'n_way':5, 'k_spt':1, 'k_qry':1, 'batchsz':1000, 'imgsz':168, 'mixup': True})
 
     for i, set_ in enumerate(mini):
         # support_x: [k_shot*n_way, 3, 84, 84]
@@ -276,14 +300,10 @@ if __name__ == '__main__':
 
         plt.figure(1)
         plt.imshow(support_x.transpose(2, 0).numpy())
-        plt.pause(0.5)
         plt.figure(2)
         plt.imshow(query_x.transpose(2, 0).numpy())
-        plt.pause(0.5)
 
         tb.add_image('support_x', support_x)
         tb.add_image('query_x', query_x)
-
-        time.sleep(5)
 
     tb.close()

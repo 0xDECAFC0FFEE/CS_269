@@ -182,7 +182,7 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
                 perc = (step+1)/(n_steps+1)
                 epoch_runtime = (datetime.now()-start_time)/perc
                 epoch_runtime = epoch_runtime - (epoch_runtime%timedelta(seconds=1))
-                print(f"e {epoch} step {step} {perc*100:.0f}%, {epoch_runtime} \ttraining acc: {accs}")
+                print(f"e{epoch} s{step} {perc*100:.0f}%, {epoch_runtime} \ttraining acc: {accs}")
 
             if step % (n_steps//5) == (n_steps//5-1):  # evaluation
                 print("validating model...")

@@ -5,7 +5,7 @@ from src.models import lth_maml as lth
 from pathlib import Path
 import json
 
-expr_id, uid = utils.new_expr_id("lth maml", "increase capacity", "another image aug try", "further decrease outer lr", "drop prune rate", "increasing num epochs and turning on early stopping", "double epochs again", "one more layer")
+expr_id, uid = utils.new_expr_id("test new mixup code")
 
 if not torch.cuda.is_available():
     raise Exception("CUDA ISN'T AVAILABLE WHAT WENT WRONG")
@@ -27,6 +27,7 @@ train_params = {
         "train_bs": 10000,                  # training batch size
         "test_bs": 100,                     # val/test batch size
         "train_image_aug": True,           # turn on image augmentations                                        False
+        "mixup": True,                     # turn on mixup augmentations
         "shuffle": False,                   # shuffle dataset                                                   False
         "dataset_name": "mini_imagenet",
         "dataset_location": "data/miniimagenet",
