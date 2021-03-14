@@ -43,6 +43,8 @@ delete = input(f"found {len(files_to_delete)} 0 iteration logs. delete? (y/n)")
 if delete == "y":
     for expr_id in files_to_delete:
         if (log_dir/expr_id).exists():
+            print(f"deleting {log_dir/expr_id}")
             shutil.rmtree(log_dir/expr_id)
         if (tensorboard_dir/expr_id).exists():
+            print(f"deleting {tensorboard_dir/expr_id}")
             shutil.rmtree(tensorboard_dir/expr_id)

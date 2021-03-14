@@ -5,7 +5,7 @@ from src.models import lth_maml as lth
 from pathlib import Path
 import json
 
-expr_id, uid = utils.new_expr_id("lth maml", "try repeat fB9nb lmao")
+expr_id, uid = utils.new_expr_id("lth maml", "increase capacity", "another image aug try", "further decrease outer lr", "drop prune rate", "increasing num epochs and turning on early stopping", "double epochs again", "one more layer")
 
 if not torch.cuda.is_available():
     raise Exception("CUDA ISN'T AVAILABLE WHAT WENT WRONG")
@@ -17,53 +17,59 @@ train_params = {
     "expr_id": expr_id,
     "uid": uid,
     "random_seed": 222,
-    "cudnn_enabled": False,
+    "cudnn_enabled": True,
     "dataset_params": {
         "n_way": 5,                         # number of classes to choose between for each task
         "k_spt": 1,                         # k shot for support set (number of examples per class per task)
         "k_qry": 15,                        # k shot for query set (number of examples per class per task)
         "imgsz": 84,                        # image size
-        "task_num": 4,                      # meta model batch size
+        "task_num": 2,                      # meta model batch size
         "train_bs": 10000,                  # training batch size
         "test_bs": 100,                     # val/test batch size
-        "train_image_aug": False,           # turn on image augmentations                   True
-        "shuffle": False,                   # shuffle dataset                               True
+        "train_image_aug": True,           # turn on image augmentations                                        False
+        "shuffle": False,                   # shuffle dataset                                                   False
         "dataset_name": "mini_imagenet",
         "dataset_location": "data/miniimagenet",
     },
     "prune_strategy": {
         "name": "global",
-        "rate": .1,
+        "rate": .05,
         "iterations": 15,
     },
     "model_training_params": {
         "model_name": "MAML",
-        "meta_training_epochs": 8,              # meta model training epochs                20
-        "meta_training_early_stopping": False,  # meta model early stopping                 False
-        "meta_lr": 0.001,                       # meta model learning rate                  0.0005
-        "update_lr": 0.01,                      # task specific model learning              rate
-        "update_step": 5,                       # task specific model training 
-        "finetune_step": 10,                    # task specific model finetuning testing 
+        "meta_training_epochs": 32,              # meta model training epochs                                    8
+        "meta_training_early_stopping": True,  # meta model early stopping                                     False
+        "meta_lr": 0.0005,                       # meta model learning rate                                      0.001
+        "update_lr": 0.01,                      # task specific model learning                                  0.01
+        "update_step": 10,                      # task specific model training                                  10
+        "finetune_step": 10,                    # task specific model finetuning testing                        10
+        "first_order": False,
         "dtype": "float32",
         "layer_definitions": [
-            ('conv2d', [32, 3, 3, 3, 1, 0]),
+            ('conv2d', [32, 3, 3, 3, 1, 1]),
             ('relu', [True]),
             ('bn', [32]),
             # ('dropout', [.5]),
             ('max_pool2d', [2, 2, 0]),
-            ('conv2d', [32, 32, 3, 3, 1, 0]),
+            ('conv2d', [32, 32, 3, 3, 1, 1]),
             ('relu', [True]),
             ('bn', [32]),
             # ('dropout', [.5]),
             ('max_pool2d', [2, 2, 0]),
-            ('conv2d', [32, 32, 3, 3, 1, 0]),
+            ('conv2d', [64, 32, 3, 3, 1, 1]),
             ('relu', [True]),
-            ('bn', [32]),
+            ('bn', [64]),
             # ('dropout', [.5]),
             ('max_pool2d', [2, 2, 0]),
-            ('conv2d', [32, 32, 3, 3, 1, 0]),
+            ('conv2d', [64, 64, 3, 3, 1, 1]),
             ('relu', [True]),
-            ('bn', [32]),
+            ('bn', [64]),
+            # ('dropout', [.5]),
+            ('max_pool2d', [2, 2, 0]),
+            ('conv2d', [64, 64, 3, 3, 1, 1]),
+            ('relu', [True]),
+            ('bn', [64]),
             # ('dropout', [.5]),
             ('max_pool2d', [2, 1, 0]),
             ('flatten', []),
@@ -73,8 +79,11 @@ train_params = {
             # ('relu', [True]),
             # ('bn', [32]),
             # ('dropout', [.5]),
-            ('linear', [5, 800]),
-            # ('linear', [5, 64])
+            ('bn', [1024]),
+            ('linear', [1024, 1024]),
+            ('relu', [True]),
+            ('bn', [1024]),
+            ('linear', [5, 1024])
         ]
     }
 }

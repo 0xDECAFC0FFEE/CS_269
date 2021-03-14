@@ -1,4 +1,4 @@
-FROM pytorch/pytorch
+FROM pytorch/pytorch:1.8.0-cuda11.1-cudnn8-runtime
 
 # update system packages
 ARG DEBIAN_FRONTEND=noninteractive
@@ -29,9 +29,10 @@ RUN git clone https://github.com/0xDECAFC0FFEE/.setup.git /root/.setup --recursi
 RUN python3 /root/.setup/setup.py --disable-ssh
 
 # installing project requirements.txt
-# RUN conda config --append channels conda-forge
-# COPY requirements_full.txt /root/requirements.txt
-# RUN conda install --file /root/requirements.txt
+RUN conda config --append channels conda-forge
+COPY requirements_full.txt /root/requirements.txt
+RUN conda install --file /root/requirements.txt
+# RUN conda install expect gdown snakeviz tensorboard
 
-# CMD ./start_jupyter_tensorboard_ssh.sh && cd /workspace && `which zsh`
-CMD cd /workspace && `which zsh`
+CMD ./start_jupyter_tensorboard_ssh.sh && cd /workspace && `which zsh`
+# CMD cd /workspace && `which zsh`

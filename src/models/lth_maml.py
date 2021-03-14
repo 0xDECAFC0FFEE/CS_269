@@ -13,7 +13,7 @@ from .lth import detect_early_bird
 from src.models.meta import Meta
 from pathlib import Path
 import pickle
-from datetime import datetime
+from datetime import datetime, timedelta
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -59,10 +59,10 @@ def run(dataset, lottery_ticket_params, logger):
         prune_iterations_TXT="0"
     )
 
-    print(f"{len(train_data)} training steps, {expr_params['meta_training_epochs']} training epochs, {prune_strategy['iterations']} pruning iterations")
+    print(f"{len(train_data)} training steps, {training_params['meta_training_epochs']} training epochs, {prune_strategy['iterations']} pruning iterations")
     
     for prune_iter in range(prune_strategy["iterations"]):
-        print(f"========================\nstarting prune iteration {prune_iter}\n========================")
+        print(f"========================\n{lottery_ticket_params['uid']} starting prune iteration {prune_iter}\n========================")
         # reinitializing weights
         model.load_state_dict(initial_weights)
 
@@ -83,6 +83,7 @@ def run(dataset, lottery_ticket_params, logger):
 
         # scoring masked model
         test_accs = test(model, mask, test_data, training_params)
+        print(f"prune iter {prune_iter} test accs: {test_accs}")
         max_test_acc, max_test_acc_epoch = 0, 0
         for i, test_acc in enumerate(test_accs):
             if test_acc > max_test_acc:
@@ -103,7 +104,6 @@ def run(dataset, lottery_ticket_params, logger):
         else:
             early_stop_acc = test_accs[-1]
             early_stop_epoch = len(test_accs)-1
-
         writer.add_scalars("early stop epoch", {lottery_ticket_params["uid"]: early_stop_epoch}, prune_iter)
         writer.add_scalars("early stop acc", {lottery_ticket_params["uid"]: early_stop_acc}, prune_iter)
 
@@ -161,6 +161,7 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
     epoch_runtimes = []
     best_val_acc, best_model_state = 0, {}
     prev_acc = 0
+    n_steps = len(train_data)
 
     for epoch in list(range(expr_params["meta_training_epochs"])):
         # fetch meta_batchsz num of episode each time
@@ -176,11 +177,14 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
             accs = model(mask, x_spt, y_spt, x_qry, y_qry)
             # writer.add_scalars(f"prune {prune_iter} train passes", {f"epoch {epoch}": max(accs)}, step)
 
-            if step % 30 == 0:
+            if step % (n_steps//100) == 0:
                 train_accs.append({"epoch": epoch, "step": step, "accs": list(accs)})
-                print(f" step: {step} \ttraining acc: {accs}")
+                perc = (step+1)/(n_steps+1)
+                epoch_runtime = (datetime.now()-start_time)/perc
+                epoch_runtime = epoch_runtime - (epoch_runtime%timedelta(seconds=1))
+                print(f"e {epoch} step {step} {perc*100:.0f}%, {epoch_runtime} \ttraining acc: {accs}")
 
-            if step % 500 == 0:  # evaluation
+            if step % (n_steps//5) == (n_steps//5-1):  # evaluation
                 print("validating model...")
 
                 accs = test(model, mask, val_data, expr_params)
@@ -204,7 +208,7 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
             print("early stopping triggered; stopping")
             break
         else:
-            prev_acc = max(epoch_val_accs)
+            prev_acc = sum(epoch_val_accs[-6:])/len(epoch_val_accs[-6:])
 
     return train_accs, val_accs, best_model_state, epoch_runtimes
 

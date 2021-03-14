@@ -11,8 +11,8 @@
 https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
 
 ### start up full gpu docker container (13.8GB)
-docker build -t cs269_full -f full.dockerfile .  
-docker run -ti --gpus all --shm-size=1g --ulimit memlock=-1 -e "TERM=xterm-256color" -v "$(pwd):/workspace" -p 8888:8888 -p 7722:7722 -p 6006:6006 -v /etc/localtime:/etc/localtime:ro cs269_full  
+    docker build -t cs269_full -f full.dockerfile .  
+docker run -ti --gpus all --shm-size=1g --ulimit memlock=-1 -e "TERM=xterm-256color" -v "$(pwd):/workspace" -v /etc/localtime:/etc/localtime:ro -v "$HOME"/.zsh_history_docker:/root/.zsh_history:z -e HIST_FILE="/root/.zsh_history" --network host cs_269
 note that docker run automatically starts jupyter and tensorboard  
 
 ### to ssh into container

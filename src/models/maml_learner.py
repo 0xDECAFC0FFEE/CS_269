@@ -72,46 +72,49 @@ class Learner(nn.Module):
         bn_idx = 0
 
         for idx, (name, param) in enumerate(self.config):
-            if name == 'conv2d':
-                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
-                x = F.conv2d(x, w, b, stride=param[4], padding=param[5])
-            elif name == 'convt2d':
-                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
-                x = F.conv_transpose2d(x, w, b, stride=param[4], padding=param[5])
-            elif name == 'linear':
-                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
-                x = F.linear(x, w, b)
-            elif name == 'bn':
-                w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
-                running_mean, running_var = bn_vars[f"{idx}_running_mean"], bn_vars[f"{idx}_running_var"]
-                x = F.batch_norm(x, running_mean, running_var, weight=w, bias=b)
-                bn_idx += 2
+            try:
+                if name == 'conv2d':
+                    w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
+                    x = F.conv2d(x, w, b, stride=param[4], padding=param[5])
+                elif name == 'convt2d':
+                    w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
+                    x = F.conv_transpose2d(x, w, b, stride=param[4], padding=param[5])
+                elif name == 'linear':
+                    w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
+                    x = F.linear(x, w, b)
+                elif name == 'bn':
+                    w, b = vars[f"{idx}_weight"], vars[f"{idx}_bias"]
+                    running_mean, running_var = bn_vars[f"{idx}_running_mean"], bn_vars[f"{idx}_running_var"]
+                    x = F.batch_norm(x, running_mean, running_var, weight=w, bias=b, training=training)
+                    bn_idx += 2
 
-            elif name == 'flatten':
-                # print(x.shape)
-                x = x.view(x.size(0), -1)
-            elif name == 'reshape':
-                # [b, 8] => [b, 2, 2, 2]
-                x = x.view(x.size(0), *param)
-            elif name == 'relu':
-                x = F.relu(x, inplace=param[0])
-            elif name == 'leakyrelu':
-                x = F.leaky_relu(x, negative_slope=param[0], inplace=param[1])
-            elif name == 'tanh':
-                x = F.tanh(x)
-            elif name == 'sigmoid':
-                x = torch.sigmoid(x)
-            elif name == 'upsample':
-                x = F.upsample_nearest(x, scale_factor=param[0])
-            elif name == 'max_pool2d':
-                x = F.max_pool2d(x, param[0], param[1], param[2])
-            elif name == 'avg_pool2d':
-                x = F.avg_pool2d(x, param[0], param[1], param[2])
-            elif name == 'dropout':
-                x = F.dropout(x, param[0], training=training)
-
-            else:
-                raise NotImplementedError
+                elif name == 'flatten':
+                    # print(x.shape)
+                    x = x.view(x.size(0), -1)
+                elif name == 'reshape':
+                    # [b, 8] => [b, 2, 2, 2]
+                    x = x.view(x.size(0), *param)
+                elif name == 'relu':
+                    x = F.relu(x, inplace=param[0])
+                elif name == 'leakyrelu':
+                    x = F.leaky_relu(x, negative_slope=param[0], inplace=param[1])
+                elif name == 'tanh':
+                    x = F.tanh(x)
+                elif name == 'sigmoid':
+                    x = torch.sigmoid(x)
+                elif name == 'upsample':
+                    x = F.upsample_nearest(x, scale_factor=param[0])
+                elif name == 'max_pool2d':
+                    x = F.max_pool2d(x, param[0], param[1], param[2])
+                elif name == 'avg_pool2d':
+                    x = F.avg_pool2d(x, param[0], param[1], param[2])
+                elif name == 'dropout':
+                    x = F.dropout(x, param[0], training=training)
+                else:
+                    raise NotImplementedError
+            except Exception as e:
+                print("layer input shape:", x.shape)
+                raise e
 
 
         # make sure variable is used properly
