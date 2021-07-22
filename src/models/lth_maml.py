@@ -169,20 +169,25 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
         # pbar = tqdm(total=len(train_data), leave=False) # not wrapping the train_data in tqdm as it causes a threading error
         start_time = datetime.now()
         epoch_val_accs = []
+        epoch_train_accs = []
         for step, (x_spt, y_spt, x_qry, y_qry) in enumerate(train_data):
 
             x_spt, y_spt = x_spt.to(device), y_spt.to(device)
             x_qry, y_qry = x_qry.to(device), y_qry.to(device)
 
             accs = model(mask, x_spt, y_spt, x_qry, y_qry)
+            epoch_train_accs.append(accs)
             # writer.add_scalars(f"prune {prune_iter} train passes", {f"epoch {epoch}": max(accs)}, step)
 
             if step % (n_steps//100) == 0:
-                train_accs.append({"epoch": epoch, "step": step, "accs": list(accs)})
+                averaged_accs = np.mean(np.array(epoch_train_accs), axis=0)
+                epoch_train_accs = []
+                train_accs.append({"epoch": epoch, "step": step, "accs": list(averaged_accs)})
                 perc = (step+1)/(n_steps+1)
                 epoch_runtime = (datetime.now()-start_time)/perc
                 epoch_runtime = epoch_runtime - (epoch_runtime%timedelta(seconds=1))
-                print(f"e{epoch} s{step} {perc*100:.0f}%, {epoch_runtime} \ttraining acc: {accs}")
+                max_acc, max_i = int(max(averaged_accs)*1000)/1000, np.argmax(averaged_accs)
+                print(f"e{epoch} s{step} {perc*100:.0f}%, \tmax {epoch_runtime}\t{max_acc}\t{max_i}\ttraining acc: {averaged_accs}")
 
             if step % (n_steps//5) == (n_steps//5-1):  # evaluation
                 print("validating model...")
@@ -190,7 +195,7 @@ def train(model, mask, train_data, val_data, expr_params, writer, prune_iter):
                 accs = test(model, mask, val_data, expr_params)
 
                 print('val acc:', accs)
-                writer.add_scalars(f"prune {prune_iter} val passes", {f"epoch {epoch}": max(accs)}, step)
+                writer.add_scalars(f"prune {prune_iter} val passes", {f"epoch {epoch:02}": max(accs)}, step)
                 epoch_val_accs.append(max(accs))
                 if max(accs) > best_val_acc:
                     best_val_acc = max(accs)

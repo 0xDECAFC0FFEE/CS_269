@@ -14,11 +14,11 @@ from tqdm import tqdm
 
 def update_weights(named_parameters, loss, lr, first_order):
     names, params = list(zip(*named_parameters))
-    if not first_order:
+    if first_order:
         grad = torch.autograd.grad(loss, params)
     else:
-        grad = torch.autograd.grad(loss, params, create_graph=True)
-        grad = [g.detach() for g in grad]
+        grad = torch.autograd.grad(loss, params, create_graph=True, retain_graph=True)
+        # grad = [g.detach() for g in grad]
 
     fast_weights = [p - lr * g for p, g in zip(params, grad)]
     fast_weights = OrderedDict(zip(names, fast_weights))

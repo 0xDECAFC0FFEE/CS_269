@@ -70,7 +70,7 @@ def download_mini_imagenet(dataset_path, saved_image_zip_file=None):
     os.system(f"rm {dataset_path/'raw.zip'}")
 
 def build_meta_learning_tasks(dataset_path, args, disable_training=False):
-    num_workers = 0
+    num_workers = 5
     if not disable_training:
         train = MiniImagenet(dataset_path, mode='train', args=args)
         train = torch.utils.data.DataLoader(train, args["task_num"], shuffle=args["shuffle"], num_workers=num_workers, pin_memory=True)
